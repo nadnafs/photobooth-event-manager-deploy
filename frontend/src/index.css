@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f8fafc;
+  --color-card: #ffffff;
+  --color-primary: #2563eb;
+  --color-success: #16a34a;
+  --color-warning: #f59e0b;
+  --color-danger: #dc2626;
+  --color-textMain: #1e293b;
+  --color-textSecondary: #64748b;
+  --color-border: #e2e8f0;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-textMain);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+.tv-marquee {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.tv-marquee-inner {
+  display: flex;
+  width: max-content;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  animation: tv-marquee-scroll 50s linear infinite;
+}
+
+.tv-marquee-group {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.tv-marquee-item {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0 2.5rem;
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tv-marquee-item::after {
+  content: "•";
+  margin-left: 2.5rem;
+  opacity: 0.9;
+}
+
+@keyframes tv-marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
