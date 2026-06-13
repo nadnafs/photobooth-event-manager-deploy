@@ -12,7 +12,17 @@ const OwnerDashboard = () => {
     const fetchEvents = async () => {
       try {
         const res = await apiClient.get('/events');
-        setEvents(res.data.events);
+        const evList = res.data.events || [];
+        setEvents(evList);
+        
+        if (evList.length > 0) {
+          const activeEv = evList.find(e => e.is_active);
+          if (activeEv) {
+            setSelectedEventId(activeEv.id);
+          } else {
+            setSelectedEventId(evList[0].id);
+          }
+        }
       } catch (error) {
         console.error('Failed to fetch events');
       }
@@ -21,24 +31,30 @@ const OwnerDashboard = () => {
   }, []);
 
   useEffect(() => {
+    if (!selectedEventId) return;
+
+    let isMounted = true;
     const fetchData = async () => {
+      setData(null); // Kosongkan data lama saat loading event baru
       try {
-        const url = selectedEventId 
-          ? `/reports/dashboard-owner?event_id=${selectedEventId}`
-          : '/reports/dashboard-owner';
-        const res = await apiClient.get(url);
-        setData(res.data);
+        const res = await apiClient.get(`/reports/dashboard-owner?event_id=${selectedEventId}`);
+        if (isMounted) setData(res.data);
       } catch (error) {
         console.error(error);
+        if (isMounted && error.response?.status === 400) {
+          alert('Event harus dipilih.');
+        }
       }
     };
     fetchData();
+
+    return () => { isMounted = false; };
   }, [selectedEventId]);
 
   const handleExport = async () => {
+    if (!selectedEventId) return alert('Silakan pilih event terlebih dahulu.');
     try {
-      let url = '/reports/transactions-export';
-      if (selectedEventId) url += `?event_id=${selectedEventId}`;
+      const url = `/reports/transactions-export?event_id=${selectedEventId}`;
 
       const response = await apiClient.get(url, {
         responseType: 'blob'
@@ -47,7 +63,8 @@ const OwnerDashboard = () => {
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `Laporan_Owner_${new Date().toISOString().split('T')[0]}.pdf`;
+      const eventName = events.find(e => e.id === selectedEventId)?.name?.replace(/[^a-zA-Z0-9]/g, '-') || 'Event';
+      link.download = `Laporan_Transaksi_${eventName}_${new Date().toISOString().split('T')[0]}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -57,7 +74,7 @@ const OwnerDashboard = () => {
     }
   };
 
-  if (!data) return <div className="p-10">Loading...</div>;
+  if (!data) return <div className="p-10 text-center font-medium">Memuat Laporan Event...</div>;
 
   const { stats } = data;
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(num || 0);
@@ -71,12 +88,11 @@ const OwnerDashboard = () => {
         </div>
         <div className="flex gap-4">
           <select 
-            className="px-4 py-2 rounded-xl bg-slate-800 text-white border border-slate-700"
+            className="px-4 py-2 rounded-xl bg-slate-800 text-white border border-slate-700 max-w-[200px] truncate"
             value={selectedEventId}
             onChange={e => setSelectedEventId(e.target.value)}
           >
-            <option value="">Semua Event</option>
-            {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+            {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name} {ev.is_active ? '(Aktif)' : ''}</option>)}
           </select>
           <a 
             href="/tv-antrian" 

@@ -219,7 +219,7 @@ exports.createTransaction = async (req, res) => {
 exports.getTransactions = async (req, res) => {
   try {
     let eventIdParam = req.query.event_id;
-    if (!eventIdParam && req.user.role !== 'OWNER') {
+    if (!eventIdParam) {
       const activeEventRes = await pool.query('SELECT id FROM events WHERE is_active = true LIMIT 1');
       if (activeEventRes.rows.length === 0) {
         return res.json({ transactions: [] });
@@ -427,6 +427,10 @@ exports.exportTransactionsPDF = async (req, res) => {
   try {
     const { event_id, date, status, payment_method } = req.query;
 
+    if (!event_id) {
+      return res.status(400).json({ success: false, message: 'Event wajib dipilih untuk melakukan export.' });
+    }
+
     let query = `
       SELECT t.*, 
              e.name as event_name, 
@@ -441,7 +445,8 @@ exports.exportTransactionsPDF = async (req, res) => {
     const params = [];
     let paramIndex = 1;
 
-    if (event_id) { query += ` AND t.event_id = $${paramIndex++}`; params.push(event_id); }
+    query += ` AND t.event_id = $${paramIndex++}`; params.push(event_id);
+    
     if (date) { query += ` AND DATE(t.created_at) = $${paramIndex++}`; params.push(date); }
     if (status) { query += ` AND t.payment_status = $${paramIndex++}`; params.push(status); }
     if (payment_method) { query += ` AND t.payment_method = $${paramIndex++}`; params.push(payment_method); }
@@ -449,12 +454,18 @@ exports.exportTransactionsPDF = async (req, res) => {
     query += ' ORDER BY t.created_at ASC';
     const result = await pool.query(query, params);
 
+    // Dapatkan nama event
+    const eventRes = await pool.query('SELECT name FROM events WHERE id = $1', [event_id]);
+    const eventName = eventRes.rows.length > 0 ? eventRes.rows[0].name.replace(/[^a-zA-Z0-9]/g, '-') : 'Event';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `Laporan_Transaksi_${eventName}_${dateStr}.pdf`;
+
     const doc = new PDFDocument({ margin: 30, size: 'A4' });
-    res.setHeader('Content-disposition', 'attachment; filename="Laporan_Transaksi.pdf"');
+    res.setHeader('Content-disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-type', 'application/pdf');
     doc.pipe(res);
 
-    doc.fontSize(16).text('Laporan Transaksi Photobooth', { align: 'center' });
+    doc.fontSize(16).text(`Laporan Transaksi: ${eventName}`, { align: 'center' });
     doc.moveDown();
 
     doc.fontSize(10).text(`Tanggal Cetak: ${new Date().toLocaleString()}`);

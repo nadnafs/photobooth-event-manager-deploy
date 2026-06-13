@@ -53,13 +53,12 @@ exports.getPenerimaDashboard = async (req, res) => {
 exports.getOwnerDashboard = async (req, res) => {
   try {
     const { event_id } = req.query;
-    let eventCondition = '';
-    let params = [];
-    if (event_id) {
-      eventCondition = 'WHERE event_id = $1';
-      params.push(event_id);
+    if (!event_id) {
+      return res.status(400).json({ success: false, message: 'Event wajib dipilih untuk menampilkan laporan.' });
     }
-    
+
+    let eventCondition = 'WHERE event_id = $1';
+    let params = [event_id];
     const statsRes = await pool.query(`
       SELECT 
         COUNT(CASE WHEN deleted_at IS NULL THEN 1 END) as total_transaksi,
@@ -81,6 +80,9 @@ const PDFDocument = require('pdfkit');
 exports.exportOwnerReportPDF = async (req, res) => {
   try {
     const { event_id, start_date, end_date, status, payment_method } = req.query;
+    if (!event_id) {
+      return res.status(400).json({ success: false, message: 'Event wajib dipilih untuk melakukan export.' });
+    }
     
     let query = `
       SELECT t.*, 
@@ -93,14 +95,10 @@ exports.exportOwnerReportPDF = async (req, res) => {
       LEFT JOIN participant_categories pc ON t.participant_category_id = pc.id
       LEFT JOIN users u1 ON t.created_by = u1.id
       LEFT JOIN users u2 ON t.verified_by = u2.id
-      WHERE t.deleted_at IS NULL
+      WHERE t.deleted_at IS NULL AND t.event_id = $1
     `;
-    let params = [];
+    let params = [event_id];
     
-    if (event_id) {
-      params.push(event_id);
-      query += ` AND t.event_id = $${params.length}`;
-    }
     if (start_date) {
       params.push(start_date);
       query += ` AND DATE(t.created_at) >= $${params.length}`;
@@ -122,12 +120,17 @@ exports.exportOwnerReportPDF = async (req, res) => {
     const transRes = await pool.query(query, params);
     const transactions = transRes.rows;
 
+    const eventRes = await pool.query('SELECT name FROM events WHERE id = $1', [event_id]);
+    const eventName = eventRes.rows.length > 0 ? eventRes.rows[0].name.replace(/[^a-zA-Z0-9]/g, '-') : 'Event';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `laporan-transaksi-${eventName}-${dateStr}.pdf`;
+
     const doc = new PDFDocument({ margin: 30, size: 'A4' });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="Laporan_Owner.pdf"');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     doc.pipe(res);
 
-    doc.fontSize(16).font('Helvetica-Bold').text('LAPORAN TRANSAKSI', { align: 'center' });
+    doc.fontSize(16).font('Helvetica-Bold').text(`LAPORAN TRANSAKSI: ${eventName.toUpperCase()}`, { align: 'center' });
     doc.fontSize(10).font('Helvetica').text(`Tanggal Export: ${new Date().toLocaleString('id-ID')}`, { align: 'center' });
     doc.moveDown(2);
 

@@ -22,6 +22,10 @@ const ListTransaksi = () => {
   const [waitingQueue, setWaitingQueue] = useState([]);
   const [skippedQueue, setSkippedQueue] = useState([]);
 
+  // Owner specific state
+  const [ownerEvents, setOwnerEvents] = useState([]);
+  const [selectedOwnerEventId, setSelectedOwnerEventId] = useState('');
+
   // Table filters & Tab state
   const [activeTab, setActiveTab] = useState('MENUNGGU_PEMBAYARAN');
   const [filters, setFilters] = useState({ q: '', status: 'MENUNGGU_PEMBAYARAN', payment_method: '' });
@@ -110,16 +114,34 @@ const ListTransaksi = () => {
   const loadAllData = (eventId) => {
     if (!eventId) return;
     fetchTransactions(eventId);
-    fetchQueueStatus(eventId);
+    if (user?.role !== 'OWNER') {
+      fetchQueueStatus(eventId);
+    }
     fetchStats(eventId);
   };
 
   // Trigger data load on filter change or socket events
   useEffect(() => {
-    if (activeEventContext?.event?.id) {
-      loadAllData(activeEventContext.event.id);
+    if (user?.role === 'OWNER') {
+      if (selectedOwnerEventId) loadAllData(selectedOwnerEventId);
+    } else {
+      if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
     }
-  }, [filters, activeEventContext?.event?.id]);
+  }, [filters, activeEventContext?.event?.id, selectedOwnerEventId, user?.role]);
+
+  // Fetch events if user is OWNER
+  useEffect(() => {
+    if (user?.role === 'OWNER') {
+      apiClient.get('/events').then(res => {
+        const evs = res.data.events || [];
+        setOwnerEvents(evs);
+        if (evs.length > 0) {
+          const activeEv = evs.find(e => e.is_active);
+          setSelectedOwnerEventId(activeEv ? activeEv.id : evs[0].id);
+        }
+      }).catch(err => console.error('Error fetching events for owner:', err));
+    }
+  }, [user?.role]);
 
   useEffect(() => {
     fetchActiveEventContext();
@@ -127,8 +149,10 @@ const ListTransaksi = () => {
     // Listen to Socket.IO events for reactive updates
     const socket = getSocket();
     const handleUpdate = () => {
-      if (activeEventContext?.event?.id) {
-        loadAllData(activeEventContext.event.id);
+      if (user?.role === 'OWNER') {
+        if (selectedOwnerEventId) loadAllData(selectedOwnerEventId);
+      } else {
+        if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
       }
     };
 
@@ -154,7 +178,9 @@ const ListTransaksi = () => {
       } else {
         alert(res.data.message || 'Antrean kosong');
       }
-      if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
+      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
+        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
+      }
     } catch (err) {
       alert(err.response?.data?.message || 'Gagal memanggil antrean berikutnya');
     }
@@ -163,7 +189,9 @@ const ListTransaksi = () => {
   const handleRecall = async (id, code) => {
     try {
       await apiClient.post(`/queue/${id}/recall`);
-      if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
+      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
+        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
+      }
     } catch (err) {
       alert(err.response?.data?.message || 'Gagal memanggil ulang');
     }
@@ -172,7 +200,9 @@ const ListTransaksi = () => {
   const handleSkip = async (id, code) => {
     try {
       await apiClient.post(`/queue/${id}/skip`);
-      if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
+      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
+        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
+      }
     } catch (err) {
       alert(err.response?.data?.message || 'Gagal melewati antrean');
     }
@@ -221,7 +251,9 @@ const ListTransaksi = () => {
       window.open(`/print-nota/${txId}`, '_blank');
 
       setCheckoutModal({ isOpen: false, transaction: null });
-      if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
+      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
+        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
+      }
     } catch (error) {
       alert(error.response?.data?.message || 'Gagal memverifikasi pembayaran');
     } finally {
@@ -236,7 +268,9 @@ const ListTransaksi = () => {
       const res = await apiClient.post(`/transactions/${id}/cancel`, { cancel_reason: reason });
       alert(res.data.message || 'Transaksi berhasil dibatalkan.');
       setCancelModal({ isOpen: false, transaction: null, reason: '' });
-      if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
+      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
+        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
+      }
     } catch (error) {
       alert(error.response?.data?.message || 'Gagal membatalkan transaksi');
     }
@@ -248,7 +282,9 @@ const ListTransaksi = () => {
       const res = await apiClient.delete(`/transactions/${id}`, { data: { delete_reason: reason } });
       alert(res.data.message || 'Pendaftaran berhasil dihapus.');
       setDeleteModal({ isOpen: false, transaction: null, reason: '' });
-      if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
+      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
+        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
+      }
     } catch (error) {
       alert(error.response?.data?.message || 'Gagal menghapus pendaftaran');
     }
@@ -286,8 +322,12 @@ const ListTransaksi = () => {
   };
 
   const handleExportPDF = () => {
-    const query = new URLSearchParams(filters).toString();
-    window.open(`${env.apiUrl}/transactions/export/pdf?${query}&token=${token}`, '_blank');
+    const currentEventId = user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id;
+    if (!currentEventId) {
+      return alert('Event aktif tidak ditemukan. Tidak dapat melakukan export.');
+    }
+    const queryParams = new URLSearchParams({ ...filters, event_id: currentEventId }).toString();
+    window.open(`${env.apiUrl}/transactions/export/pdf?${queryParams}&token=${token}`, '_blank');
   };
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
@@ -308,6 +348,15 @@ const ListTransaksi = () => {
           <p className="text-slate-500 text-sm mt-0.5">Kelola antrean pembayaran, verifikasi transaksi, dan pantau statistik hari ini.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {user?.role === 'OWNER' && (
+            <select
+              className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold shadow-sm text-sm max-w-[200px] truncate"
+              value={selectedOwnerEventId}
+              onChange={e => setSelectedOwnerEventId(e.target.value)}
+            >
+              {ownerEvents.map(ev => <option key={ev.id} value={ev.id}>{ev.name} {ev.is_active ? '(Aktif)' : ''}</option>)}
+            </select>
+          )}
           <Link
             to="/tv-antrian"
             target="_blank"
@@ -331,95 +380,99 @@ const ListTransaksi = () => {
       </div>
 
       {/* 2. ACTIVE CALL PANEL (Hospital Style Single Queue) */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden border border-slate-800">
-        <div className="absolute -top-20 -left-20 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-20 -right-20 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+      {user?.role !== 'OWNER' && (
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden border border-slate-800">
+          <div className="absolute -top-20 -left-20 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-20 -right-20 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="flex-1 min-w-0">
-            <span className="px-3 py-1 bg-indigo-500/30 text-indigo-300 rounded-full text-xs font-black uppercase tracking-wider inline-flex items-center gap-1.5 mb-3">
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
-              Panggilan Aktif TV Antrean
-            </span>
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="flex-1 min-w-0">
+              <span className="px-3 py-1 bg-indigo-500/30 text-indigo-300 rounded-full text-xs font-black uppercase tracking-wider inline-flex items-center gap-1.5 mb-3">
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
+                Panggilan Aktif TV Antrean
+              </span>
 
-            {activeCall ? (
-              <div>
-                <div className="flex items-baseline gap-4 flex-wrap">
-                  <h2 className="text-5xl font-black font-mono tracking-wider text-emerald-400">
-                    {activeCall.payment_queue_code || activeCall.queue_code}
-                  </h2>
-                  <div className="min-w-0">
-                    <h3 className="text-2xl font-black truncate uppercase text-slate-100">{activeCall.participant_name}</h3>
-                    <p className="text-xs text-slate-400 font-mono mt-0.5">
-                      Reg: {activeCall.registration_code || activeCall.receipt_number} • Waktu: {new Date(activeCall.updated_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+              {activeCall ? (
+                <div>
+                  <div className="flex items-baseline gap-4 flex-wrap">
+                    <h2 className="text-5xl font-black font-mono tracking-wider text-emerald-400">
+                      {activeCall.payment_queue_code || activeCall.queue_code}
+                    </h2>
+                    <div className="min-w-0">
+                      <h3 className="text-2xl font-black truncate uppercase text-slate-100">{activeCall.participant_name}</h3>
+                      <p className="text-xs text-slate-400 font-mono mt-0.5">
+                        Reg: {activeCall.registration_code || activeCall.receipt_number} • Waktu: {new Date(activeCall.updated_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div>
-                <h2 className="text-2xl font-black text-slate-300">Belum Ada Nomor Dipanggil</h2>
-                <p className="text-sm text-slate-400 mt-1">Gunakan tombol di sebelah kanan untuk memanggil peserta berikutnya.</p>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div>
+                  <h2 className="text-2xl font-black text-slate-300">Belum Ada Nomor Dipanggil</h2>
+                  <p className="text-sm text-slate-400 mt-1">Gunakan tombol di sebelah kanan untuk memanggil peserta berikutnya.</p>
+                </div>
+              )}
+            </div>
 
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
-            {activeCall && (
-              <>
-                <button
-                  onClick={() => handleRecall(activeCall.id, activeCall.payment_queue_code || activeCall.queue_code)}
-                  className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition-colors text-sm flex items-center gap-2"
-                  title="Panggil Ulang Suara TV"
-                >
-                  <Volume2 size={16} /> Panggil Ulang
-                </button>
-                <button
-                  onClick={() => handleSkip(activeCall.id, activeCall.payment_queue_code || activeCall.queue_code)}
-                  className="px-4 py-3 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-300 rounded-xl font-bold transition-colors text-sm flex items-center gap-2"
-                >
-                  <X size={16} /> Lewati
-                </button>
-                <button
-                  onClick={() => openCheckoutModal(activeCall)}
-                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black transition-colors shadow-lg shadow-emerald-500/25 text-sm flex items-center gap-2"
-                >
-                  <DollarSign size={16} /> Proses Bayar
-                </button>
-              </>
-            )}
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              {activeCall && (
+                <>
+                  <button
+                    onClick={() => handleRecall(activeCall.id, activeCall.payment_queue_code || activeCall.queue_code)}
+                    className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition-colors text-sm flex items-center gap-2"
+                    title="Panggil Ulang Suara TV"
+                  >
+                    <Volume2 size={16} /> Panggil Ulang
+                  </button>
+                  <button
+                    onClick={() => handleSkip(activeCall.id, activeCall.payment_queue_code || activeCall.queue_code)}
+                    className="px-4 py-3 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-300 rounded-xl font-bold transition-colors text-sm flex items-center gap-2"
+                  >
+                    <X size={16} /> Lewati
+                  </button>
+                  <button
+                    onClick={() => openCheckoutModal(activeCall)}
+                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black transition-colors shadow-lg shadow-emerald-500/25 text-sm flex items-center gap-2"
+                  >
+                    <DollarSign size={16} /> Proses Bayar
+                  </button>
+                </>
+              )}
 
-            <button
-              onClick={handleCallNext}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black transition-colors shadow-lg shadow-indigo-600/30 text-sm flex items-center gap-2"
-            >
-              <Play size={16} /> Panggil Berikutnya
-            </button>
-          </div>
-        </div>
-
-        {/* Skipped queue panel */}
-        {skippedQueue.length > 0 && (
-          <div className="mt-5 pt-4 border-t border-slate-800/80">
-            <span className="text-[10px] text-slate-400 font-extrabold block mb-2 uppercase tracking-widest">
-              Antrean Terlewat / Skipped ({skippedQueue.length})
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {skippedQueue.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => handleRecall(item.id, item.payment_queue_code || item.queue_code)}
-                  className="px-3 py-1.5 bg-red-950/40 hover:bg-indigo-900 hover:border-indigo-800 border border-red-900/40 rounded-xl text-red-400 hover:text-indigo-200 font-mono text-xs font-black transition-all flex items-center gap-1.5"
-                >
-                  <Volume2 size={11} />
-                  <span>{item.payment_queue_code || item.queue_code}</span>
-                  <span className="text-[10px] text-red-500/80 font-bold max-w-[80px] truncate uppercase">({item.participant_name})</span>
-                </button>
-              ))}
+              <button
+                onClick={handleCallNext}
+                className="px-6 py-4 rounded-2xl font-bold bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/25 transition-all flex items-center gap-2 group border border-indigo-400"
+              >
+                PANGGIL BERIKUTNYA
+                <ChevronRight size={24} className="group-hover:translate-x-1 transition-transform" />
+              </button>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Skipped queue panel */}
+          {skippedQueue.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-slate-800/80">
+              <span className="text-[10px] text-slate-400 font-extrabold block mb-2 uppercase tracking-widest">
+                Antrean Terlewat / Skipped ({skippedQueue.length})
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {skippedQueue.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleRecall(item.id, item.payment_queue_code || item.queue_code)}
+                    className="px-3 py-1.5 bg-red-950/40 hover:bg-indigo-900 hover:border-indigo-800 border border-red-900/40 rounded-xl text-red-400 hover:text-indigo-200 font-mono text-xs font-black transition-all flex items-center gap-1.5"
+                  >
+                    <Volume2 size={11} />
+                    <span>{item.payment_queue_code || item.queue_code}</span>
+                    <span className="text-[10px] text-red-500/80 font-bold max-w-[80px] truncate uppercase">({item.participant_name})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
 
       {/* 3. STATISTICS GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1175,7 +1228,9 @@ const ListTransaksi = () => {
                     });
                     alert('Data transaksi berhasil diperbarui');
                     setEditModal({ isOpen: false, transaction: null, participantName: '', phone: '', notes: '', categoryId: '', boothId: '', items: [] });
-                    if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
+                    if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
+                      loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
+                    }
                   } catch (err) {
                     alert(err.response?.data?.message || 'Gagal mengupdate transaksi');
                   }
