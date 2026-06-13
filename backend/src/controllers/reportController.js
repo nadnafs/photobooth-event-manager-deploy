@@ -79,51 +79,13 @@ exports.getOwnerDashboard = async (req, res) => {
 const PDFDocument = require('pdfkit');
 exports.exportOwnerReportPDF = async (req, res) => {
   try {
-    const { event_id, start_date, end_date, status, payment_method } = req.query;
-    if (!event_id) {
-      return res.status(400).json({ success: false, message: 'Event wajib dipilih untuk melakukan export.' });
-    }
-    
-    let query = `
-      SELECT t.*, 
-             e.name as event_name, 
-             pc.name as category_name, 
-             u1.name as created_by_name,
-             u2.name as verified_by_name
-      FROM transactions t
-      LEFT JOIN events e ON t.event_id = e.id
-      LEFT JOIN participant_categories pc ON t.participant_category_id = pc.id
-      LEFT JOIN users u1 ON t.created_by = u1.id
-      LEFT JOIN users u2 ON t.verified_by = u2.id
-      WHERE t.deleted_at IS NULL AND t.event_id = $1
-    `;
-    let params = [event_id];
-    
-    if (start_date) {
-      params.push(start_date);
-      query += ` AND DATE(t.created_at) >= $${params.length}`;
-    }
-    if (end_date) {
-      params.push(end_date);
-      query += ` AND DATE(t.created_at) <= $${params.length}`;
-    }
-    if (status) {
-      params.push(status);
-      query += ` AND t.payment_status = $${params.length}`;
-    }
-    if (payment_method) {
-      params.push(payment_method);
-      query += ` AND t.payment_method = $${params.length}`;
-    }
-    query += ' ORDER BY t.created_at DESC';
+    const { getTransactionsData } = require('../utils/transactionQueryHelper');
+    const { transactions, eventId } = await getTransactionsData(req.query, true);
 
-    const transRes = await pool.query(query, params);
-    const transactions = transRes.rows;
-
-    const eventRes = await pool.query('SELECT name FROM events WHERE id = $1', [event_id]);
-    const eventName = eventRes.rows.length > 0 ? eventRes.rows[0].name.replace(/[^a-zA-Z0-9]/g, '-') : 'Event';
+    const eventRes = await pool.query('SELECT name FROM events WHERE id = $1', [eventId]);
+    const eventName = eventRes.rows.length > 0 ? eventRes.rows[0].name.replace(/[^a-zA-Z0-9 ]/g, '-') : 'Event';
     const dateStr = new Date().toISOString().split('T')[0];
-    const filename = `laporan-transaksi-${eventName}-${dateStr}.pdf`;
+    const filename = `Laporan_Transaksi_${eventName.replace(/\s+/g, '_')}_${dateStr}.pdf`;
 
     const doc = new PDFDocument({ margin: 30, size: 'A4' });
     res.setHeader('Content-Type', 'application/pdf');
@@ -131,68 +93,67 @@ exports.exportOwnerReportPDF = async (req, res) => {
     doc.pipe(res);
 
     doc.fontSize(16).font('Helvetica-Bold').text(`LAPORAN TRANSAKSI: ${eventName.toUpperCase()}`, { align: 'center' });
-    doc.fontSize(10).font('Helvetica').text(`Tanggal Export: ${new Date().toLocaleString('id-ID')}`, { align: 'center' });
+    doc.fontSize(10).font('Helvetica').text(`Tanggal Cetak: ${new Date().toLocaleString('id-ID')}`, { align: 'center' });
     doc.moveDown(2);
 
-    let total_pendapatan = 0;
-    let total_lunas = 0;
-    let total_dibatalkan = 0;
-    transactions.forEach(t => {
-      if (t.payment_status === 'LUNAS' && !t.cancelled_at) {
-        total_pendapatan += parseFloat(t.total_amount || 0);
-        total_lunas++;
-      }
-      if (t.payment_status === 'DIBATALKAN') {
-        total_dibatalkan++;
-      }
-    });
+    let totalPendapatan = 0;
+    let totalLunas = 0;
+    let totalDibatalkan = 0;
 
-    doc.font('Helvetica-Bold').text('Ringkasan:', { underline: true });
-    doc.font('Helvetica').text(`Total Transaksi: ${transactions.length}`);
-    doc.text(`Total Lunas: ${total_lunas}`);
-    doc.text(`Total Belum Lunas: ${transactions.length - total_lunas}`);
-    doc.text(`Total Pemasukan (Lunas): Rp ${total_pendapatan.toLocaleString('id-ID')}`);
-    doc.moveDown(2);
-
-    const startX = 30;
-    let y = doc.y;
-
-    // Header Table
+    // Simple table format
+    const tableTop = doc.y;
     doc.font('Helvetica-Bold');
-    doc.text('Tgl', startX, y, { width: 60 });
-    doc.text('Nama', startX + 60, y, { width: 95 });
-    doc.text('Metode', startX + 155, y, { width: 45 });
-    doc.text('Total', startX + 200, y, { width: 65 });
-    doc.text('Bayar', startX + 265, y, { width: 65 });
-    doc.text('Kembali', startX + 330, y, { width: 65 });
-    doc.text('Status', startX + 395, y, { width: 55 });
-    doc.text('Petugas', startX + 450, y, { width: 80 });
-    
-    y += 15;
-    doc.moveTo(startX, y).lineTo(560, y).stroke();
-    y += 5;
+    doc.text('Nota', 30, tableTop);
+    doc.text('Nama Peserta', 110, tableTop);
+    doc.text('Kategori', 260, tableTop);
+    doc.text('Metode', 340, tableTop);
+    doc.text('Status', 410, tableTop);
+    doc.text('Total', 480, tableTop, { width: 90, align: 'right' });
 
+    doc.moveTo(30, tableTop + 15).lineTo(570, tableTop + 15).stroke();
+
+    let y = tableTop + 20;
     doc.font('Helvetica').fontSize(8);
-    for (const t of transactions) {
+
+    transactions.forEach(row => {
       if (y > 750) {
         doc.addPage();
         y = 30;
         doc.font('Helvetica').fontSize(8);
       }
-      doc.text(new Date(t.created_at).toLocaleDateString('id-ID'), startX, y, { width: 60 });
-      doc.text((t.participant_name || '').substring(0, 18), startX + 60, y, { width: 95 });
-      doc.text(t.payment_method || '-', startX + 155, y, { width: 45 });
-      doc.text(`Rp ${parseFloat(t.total_amount || 0).toLocaleString('id-ID')}`, startX + 200, y, { width: 65 });
-      doc.text(`Rp ${t.amount_received ? parseFloat(t.amount_received).toLocaleString('id-ID') : '-'}`, startX + 265, y, { width: 65 });
-      doc.text(`Rp ${t.change_amount ? parseFloat(t.change_amount).toLocaleString('id-ID') : '-'}`, startX + 330, y, { width: 65 });
-      doc.text(t.payment_status || '-', startX + 395, y, { width: 55 });
-      doc.text((t.created_by_name || '-').substring(0, 15), startX + 450, y, { width: 80 });
+      doc.text(row.receipt_number || '-', 30, y);
+      doc.text((row.participant_name || '').substring(0, 25), 110, y);
+      doc.text(row.category_name || '-', 260, y);
+      doc.text(row.payment_method || '-', 340, y);
+      doc.text(row.payment_status || '-', 410, y);
+
+      const amount = parseFloat(row.total_amount || 0);
+      if (row.payment_status === 'LUNAS') {
+        totalPendapatan += amount;
+        totalLunas++;
+      } else if (row.payment_status === 'DIBATALKAN' || row.payment_status === 'BATAL') {
+        totalDibatalkan++;
+      }
+
+      doc.text(amount.toLocaleString('id-ID'), 480, y, { width: 90, align: 'right' });
       y += 15;
-    }
+    });
+
+    doc.moveTo(30, y).lineTo(570, y).stroke();
+    y += 15;
+
+    doc.font('Helvetica-Bold').fontSize(10);
+    doc.text(`Total Transaksi Lunas: ${totalLunas}`, 30, y);
+    doc.text(`Total Dibatalkan: ${totalDibatalkan}`, 200, y);
+    doc.text('Total Pendapatan:', 350, y);
+    doc.text('Rp ' + totalPendapatan.toLocaleString('id-ID'), 480, y, { width: 90, align: 'right' });
 
     doc.end();
   } catch (error) {
     console.error(error);
+    if (error.message === 'EVENT_ID_REQUIRED') {
+      return res.status(400).json({ success: false, message: 'Event wajib dipilih untuk melakukan export.' });
+    }
     if (!res.headersSent) {
       res.status(500).json({ message: 'Server error saat generate PDF' });
     }

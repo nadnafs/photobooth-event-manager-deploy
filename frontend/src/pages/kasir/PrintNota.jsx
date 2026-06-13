@@ -234,8 +234,12 @@ const PrintNota = () => {
               <div>
                 {/* Header */}
                 <div style={{ textAlign: "center", marginBottom: "0.2cm" }}>
-                  <div style={{ fontSize: "14px", fontWeight: "100", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    {data.event_name || "PHOTOBOOTH EVENT"}
+                  <div style={{ fontSize: "16px", fontWeight: "100", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    P&G SMART PHOTO
+                  </div>
+                  <div style={{ fontSize: "10px", fontWeight: "100", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <span>Ruko Airmadidi Graha Jl. Raya Manado Bitung Airmadidi Minahasa Utara</span>
+                    <br /><span>Telp. 0431-8941917</span>
                   </div>
                   <div style={{ fontSize: "9px", marginTop: "2px" }}>
                     Nota Lunas Pembayaran
@@ -311,6 +315,14 @@ const PrintNota = () => {
                       </div>
                     </div>
                   )}
+                  <div style={{ fontSize: "12px", display: "flex", justifyContent: "space-between" }}>
+                    <span>Tanggal Selesai:</span>
+                    <span>2 Juli 2026</span>
+                  </div>
+                  <div style={{ fontSize: "12px", display: "flex", justifyContent: "space-between" }}>
+                    <span>Tempat Pengambilan Foto:</span>
+                    <span>MIS</span>
+                  </div>
                 </div>
 
                 {/* Footer message */}
@@ -322,15 +334,16 @@ const PrintNota = () => {
               {/* Tear off Slip */}
               {settings.show_booth_slip && (
                 <div style={{ marginTop: "auto", paddingTop: "0cm" }}>
-                  <div className="pb-5" style={{ borderTop: "2px dashed #000", position: "relative", margin: "0.2cm 1 0.1cm 0" }}>
+                  <div className="pb-4" style={{ borderTop: "2px dashed #000", position: "relative", margin: "0.2cm 1 0.1cm 0" }}>
 
                   </div>
                   <div style={{ textAlign: "center", padding: "0.05cm 0" }}>
                     <div style={{ fontSize: "8.5px", fontWeight: "100" }}>SOBEKAN UNTUK PETUGAS FOTO</div>
                     <div style={{ fontSize: "20px", fontWeight: "100", margin: "1px 0" }}>{queueCode}</div>
-                    <div style={{ fontSize: "9.5px", fontWeight: "100" }}>Nama: {data.participant_name} ({data.category_name || "-"})</div>
-                    <div style={{ fontSize: "9px", fontWeight: "100", marginTop: "1px" }}>Booth: {data.booth_name || "Otomatis"}</div>
-
+                    <div className="flex justify-between">
+                      <div style={{ fontSize: "9.5px", fontWeight: "100" }}>Nama: {data.participant_name} ({data.category_name || "-"})</div>
+                      <div style={{ fontSize: "9px", fontWeight: "100", marginTop: "1px" }}>Booth: {data.booth_name || "Otomatis"}</div>
+                    </div>
                     {/* Operational Summary */}
                     <div style={{ fontSize: "15.5px", border: "1px solid #000", padding: "3px", marginTop: "3px", textAlign: "left" }}>
                       <div>Sesi Foto : {photoSessions} kali</div>

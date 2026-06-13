@@ -569,7 +569,7 @@ const ListTransaksi = () => {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-700 border-b border-border">
               <tr>
-                <th className="px-5 py-3.5 font-black text-xs uppercase tracking-wider">Antrean & Registrasi</th>
+                <th className="px-5 py-3.5 font-black text-xs uppercase tracking-wider">Antrean & Nota</th>
                 <th className="px-5 py-3.5 font-black text-xs uppercase tracking-wider">Peserta & Kategori</th>
                 <th className="px-5 py-3.5 font-black text-xs uppercase tracking-wider">Tagihan & Metode</th>
                 <th className="px-5 py-3.5 font-black text-xs uppercase tracking-wider">Status Antrean</th>
@@ -580,13 +580,13 @@ const ListTransaksi = () => {
               {transactions.map(t => (
                 <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
 
-                  {/* Antrean & Registrasi */}
+                  {/* Antrean & Nota */}
                   <td className="px-5 py-3.5">
                     <div className="font-mono font-black text-lg text-slate-900 leading-tight">
                       {t.payment_queue_code || t.queue_code || <span className="text-slate-400 italic text-xs font-bold">Tanpa Nomor</span>}
                     </div>
                     <div className="font-mono text-[10px] font-bold text-slate-400 mt-0.5 uppercase">
-                      {t.registration_code || t.receipt_number}
+                      {t.payment_status === 'LUNAS' && t.receipt_number && !t.receipt_number.startsWith('D') ? t.receipt_number : (t.registration_code || t.receipt_number)}
                     </div>
                   </td>
 

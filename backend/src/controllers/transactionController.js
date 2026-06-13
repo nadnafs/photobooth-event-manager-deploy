@@ -70,8 +70,8 @@ exports.createTransaction = async (req, res) => {
       if (boothRes.rows.length > 0) boothCode = boothRes.rows[0].code;
     }
 
-    // Count all transactions for this event to get the running sequence
-    const countRes = await pool.query('SELECT COUNT(*) FROM transactions WHERE event_id = $1', [eventId]);
+    // Count today's transactions for this event to get the running sequence (daily reset)
+    const countRes = await pool.query('SELECT COUNT(*) FROM transactions WHERE event_id = $1 AND DATE(created_at) = CURRENT_DATE', [eventId]);
     const urut = String(parseInt(countRes.rows[0].count) + 1).padStart(3, '0');
     const txCount = parseInt(countRes.rows[0].count) + 1;
 
@@ -218,69 +218,15 @@ exports.createTransaction = async (req, res) => {
 
 exports.getTransactions = async (req, res) => {
   try {
-    let eventIdParam = req.query.event_id;
-    if (!eventIdParam) {
-      const activeEventRes = await pool.query('SELECT id FROM events WHERE is_active = true LIMIT 1');
-      if (activeEventRes.rows.length === 0) {
-        return res.json({ transactions: [] });
-      }
-      eventIdParam = activeEventRes.rows[0].id;
-    }
-
-    let query = `
-      SELECT t.*, 
-             e.name as event_name, 
-             pc.name as category_name, 
-             b.name as booth_name,
-             u1.name as created_by_name,
-             u2.name as verified_by_name
-      FROM transactions t
-      LEFT JOIN events e ON t.event_id = e.id
-      LEFT JOIN participant_categories pc ON t.participant_category_id = pc.id
-      LEFT JOIN booths b ON t.booth_id = b.id
-      LEFT JOIN users u1 ON t.created_by = u1.id
-      LEFT JOIN users u2 ON t.verified_by = u2.id
-      WHERE t.deleted_at IS NULL
-    `;
-    const params = [];
-    let paramIndex = 1;
-
-    // Filters
-    const { date, status, payment_method, q } = req.query;
-    if (eventIdParam) { query += ` AND t.event_id = $${paramIndex++}`; params.push(eventIdParam); }
-    if (date) { query += ` AND DATE(t.created_at) = $${paramIndex++}`; params.push(date); }
-    if (status && status !== 'ALL') { query += ` AND t.payment_status = $${paramIndex++}`; params.push(status); }
-    if (payment_method && payment_method !== 'ALL') { query += ` AND t.payment_method = $${paramIndex++}`; params.push(payment_method); }
-    if (q) { query += ` AND (t.participant_name ILIKE $${paramIndex} OR t.receipt_number ILIKE $${paramIndex} OR t.registration_code ILIKE $${paramIndex} OR t.payment_queue_code ILIKE $${paramIndex})`; params.push(`%${q}%`); paramIndex++; }
-
-    query += ` ORDER BY t.created_at DESC`;
-
-    const result = await pool.query(query, params);
-
-    // Get Items for each transaction
-    const transIds = result.rows.map(r => r.id);
-    if (transIds.length > 0) {
-      const itemsRes = await pool.query(`
-        SELECT ti.*, p.name as product_name 
-        FROM transaction_items ti 
-        LEFT JOIN products p ON ti.product_id = p.id
-        WHERE ti.transaction_id = ANY($1)
-      `, [transIds]);
-
-      const itemsMap = {};
-      itemsRes.rows.forEach(item => {
-        if (!itemsMap[item.transaction_id]) itemsMap[item.transaction_id] = [];
-        itemsMap[item.transaction_id].push(item);
-      });
-
-      result.rows.forEach(row => {
-        row.items = itemsMap[row.id] || [];
-      });
-    }
-
-    res.json({ transactions: result.rows });
+    const { getTransactionsData } = require('../utils/transactionQueryHelper');
+    // Untuk getTransactions API Kasir, jika event_id kosong, ambil active event
+    const { transactions } = await getTransactionsData(req.query, false);
+    res.json({ transactions });
   } catch (error) {
     console.error(error);
+    if (error.message === 'EVENT_ID_REQUIRED') {
+      return res.status(400).json({ success: false, message: 'Event wajib dipilih.' });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -425,54 +371,27 @@ exports.verifyPayment = async (req, res) => {
 
 exports.exportTransactionsPDF = async (req, res) => {
   try {
-    const { event_id, date, status, payment_method } = req.query;
-
-    if (!event_id) {
-      return res.status(400).json({ success: false, message: 'Event wajib dipilih untuk melakukan export.' });
-    }
-
-    let query = `
-      SELECT t.*, 
-             e.name as event_name, 
-             pc.name as category_name, 
-             b.name as booth_name
-      FROM transactions t
-      LEFT JOIN events e ON t.event_id = e.id
-      LEFT JOIN participant_categories pc ON t.participant_category_id = pc.id
-      LEFT JOIN booths b ON t.booth_id = b.id
-      WHERE 1=1 AND (t.deleted_at IS NULL OR t.payment_status = 'DIBATALKAN' OR t.payment_status = 'BATAL')
-    `;
-    const params = [];
-    let paramIndex = 1;
-
-    query += ` AND t.event_id = $${paramIndex++}`; params.push(event_id);
-    
-    if (date) { query += ` AND DATE(t.created_at) = $${paramIndex++}`; params.push(date); }
-    if (status) { query += ` AND t.payment_status = $${paramIndex++}`; params.push(status); }
-    if (payment_method) { query += ` AND t.payment_method = $${paramIndex++}`; params.push(payment_method); }
-
-    query += ' ORDER BY t.created_at ASC';
-    const result = await pool.query(query, params);
+    const { getTransactionsData } = require('../utils/transactionQueryHelper');
+    const { transactions, eventId } = await getTransactionsData(req.query, true);
 
     // Dapatkan nama event
-    const eventRes = await pool.query('SELECT name FROM events WHERE id = $1', [event_id]);
-    const eventName = eventRes.rows.length > 0 ? eventRes.rows[0].name.replace(/[^a-zA-Z0-9]/g, '-') : 'Event';
+    const eventRes = await pool.query('SELECT name FROM events WHERE id = $1', [eventId]);
+    const eventName = eventRes.rows.length > 0 ? eventRes.rows[0].name.replace(/[^a-zA-Z0-9 ]/g, '-') : 'Event';
     const dateStr = new Date().toISOString().split('T')[0];
-    const filename = `Laporan_Transaksi_${eventName}_${dateStr}.pdf`;
+    const filename = `Laporan_Transaksi_${eventName.replace(/\s+/g, '_')}_${dateStr}.pdf`;
 
     const doc = new PDFDocument({ margin: 30, size: 'A4' });
     res.setHeader('Content-disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-type', 'application/pdf');
     doc.pipe(res);
 
-    doc.fontSize(16).text(`Laporan Transaksi: ${eventName}`, { align: 'center' });
-    doc.moveDown();
-
-    doc.fontSize(10).text(`Tanggal Cetak: ${new Date().toLocaleString()}`);
-    doc.text(`Total Data: ${result.rows.length}`);
-    doc.moveDown();
+    doc.fontSize(16).font('Helvetica-Bold').text(`LAPORAN TRANSAKSI: ${eventName.toUpperCase()}`, { align: 'center' });
+    doc.fontSize(10).font('Helvetica').text(`Tanggal Cetak: ${new Date().toLocaleString('id-ID')}`, { align: 'center' });
+    doc.moveDown(2);
 
     let totalPendapatan = 0;
+    let totalLunas = 0;
+    let totalDibatalkan = 0;
 
     // Simple table format
     const tableTop = doc.y;
@@ -489,7 +408,7 @@ exports.exportTransactionsPDF = async (req, res) => {
     let y = tableTop + 20;
     doc.font('Helvetica').fontSize(8);
 
-    result.rows.forEach(row => {
+    transactions.forEach(row => {
       if (y > 750) {
         doc.addPage();
         y = 30;
@@ -504,6 +423,9 @@ exports.exportTransactionsPDF = async (req, res) => {
       const amount = parseFloat(row.total_amount || 0);
       if (row.payment_status === 'LUNAS') {
         totalPendapatan += amount;
+        totalLunas++;
+      } else if (row.payment_status === 'DIBATALKAN' || row.payment_status === 'BATAL') {
+        totalDibatalkan++;
       }
 
       doc.text(amount.toLocaleString('id-ID'), 480, y, { width: 90, align: 'right' });
@@ -511,14 +433,20 @@ exports.exportTransactionsPDF = async (req, res) => {
     });
 
     doc.moveTo(30, y).lineTo(570, y).stroke();
-    y += 10;
+    y += 15;
+    
     doc.font('Helvetica-Bold').fontSize(10);
-    doc.text('Total Pendapatan (Lunas):', 300, y);
+    doc.text(`Total Transaksi Lunas: ${totalLunas}`, 30, y);
+    doc.text(`Total Dibatalkan: ${totalDibatalkan}`, 200, y);
+    doc.text('Total Pendapatan:', 350, y);
     doc.text('Rp ' + totalPendapatan.toLocaleString('id-ID'), 480, y, { width: 90, align: 'right' });
 
     doc.end();
   } catch (error) {
     console.error(error);
+    if (error.message === 'EVENT_ID_REQUIRED') {
+      return res.status(400).json({ success: false, message: 'Event wajib dipilih untuk melakukan export.' });
+    }
     if (!res.headersSent) res.status(500).json({ message: 'Gagal export PDF' });
   }
 };
