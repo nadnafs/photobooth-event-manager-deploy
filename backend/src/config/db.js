@@ -1,4 +1,4 @@
-const { Pool } = require('pg');
+const pool = require("./config/db");
 require('dotenv').config();
 
 const pool = new Pool({
