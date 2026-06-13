@@ -544,10 +544,6 @@ exports.deleteRegistration = async (req, res) => {
     }
     const trans = transRes.rows[0];
 
-    if (trans.deleted_at) {
-      throw new Error('Pendaftaran sudah dihapus sebelumnya.');
-    }
-
     if (trans.payment_status !== 'MENUNGGU_PEMBAYARAN') {
       throw new Error('Hanya pendaftaran yang belum dibayar yang dapat dihapus.');
     }
@@ -556,13 +552,11 @@ exports.deleteRegistration = async (req, res) => {
       throw new Error('Anda tidak memiliki akses untuk menghapus pendaftaran yang dibuat oleh pengguna lain.');
     }
 
-    await pool.query(`
-      UPDATE transactions
-      SET deleted_at = NOW(),
-          deleted_by = $1,
-          delete_reason = $2
-      WHERE id = $3
-    `, [userId, delete_reason || null, id]);
+    // Hard delete items first
+    await pool.query('DELETE FROM transaction_items WHERE transaction_id = $1', [id]);
+
+    // Hard delete the transaction itself
+    await pool.query('DELETE FROM transactions WHERE id = $1', [id]);
 
     await pool.query('COMMIT');
 
