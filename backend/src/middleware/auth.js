@@ -2,13 +2,14 @@ const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 
 const verifyToken = (req, res, next) => {
-  let token = req.query.token;
+  // Token HANYA diterima via Authorization Bearer header.
+  // Tidak menerima token via query param untuk mencegah token
+  // terekspos di URL, server log, CDN log, dan referrer header.
+  const authHeader = req.headers.authorization;
+  let token = null;
 
-  if (!token) {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
-    }
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
   }
 
   if (!token) {

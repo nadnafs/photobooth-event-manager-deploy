@@ -239,7 +239,7 @@ const PrintNota = () => {
                   </div>
                   <div style={{ fontSize: "10px", fontWeight: "100", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                     <span>Ruko Airmadidi Graha Jl. Raya Manado Bitung Airmadidi Minahasa Utara</span>
-                    <br /><span>Telp. 0431-8941917</span>
+                    <br /><span>NO Wa:  0811437878</span>
                   </div>
                   <div style={{ fontSize: "9px", marginTop: "2px" }}>
                     Nota Lunas Pembayaran

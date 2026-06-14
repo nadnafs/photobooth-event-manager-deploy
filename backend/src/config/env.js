@@ -15,21 +15,16 @@ const env = {
 
   DATABASE_URL: process.env.DATABASE_URL,
 
-  JWT_SECRET:
-    process.env.JWT_SECRET ||
-    "secretkey-development-only",
+  JWT_SECRET: process.env.JWT_SECRET,
 };
 
 if (!env.DATABASE_URL) {
-  console.warn(
-    "Warning: DATABASE_URL belum diatur pada environment backend."
-  );
+  console.warn("Warning: DATABASE_URL belum diatur pada environment backend.");
 }
 
 if (!env.JWT_SECRET) {
-  console.warn(
-    "Warning: JWT_SECRET belum diatur pada environment backend."
-  );
+  console.error("FATAL ERROR: JWT_SECRET belum diatur pada environment backend.");
+  process.exit(1);
 }
 
 module.exports = env;

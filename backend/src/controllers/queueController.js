@@ -211,11 +211,12 @@ exports.finishQueue = async (req, res) => {
       return res.status(404).json({ message: 'Transaksi tidak ditemukan' });
     }
 
-    // Update to SELESAI and LUNAS (as a direct finish queue action helper)
+    // Hanya update queue_status foto ke SELESAI.
+    // payment_status TIDAK diubah di sini — verifikasi pembayaran dilakukan via /verify-payment.
     const updateRes = await pool.query(`
       UPDATE transactions 
-      SET payment_queue_status = 'SELESAI', 
-          payment_status = 'LUNAS',
+      SET queue_status = 'SELESAI',
+          payment_queue_status = 'SELESAI',
           updated_at = NOW() 
       WHERE id = $1 RETURNING *
     `, [id]);
@@ -363,28 +364,41 @@ exports.searchPublicQueue = async (req, res) => {
   if (!q || q.length < 3) return res.json([]);
   
   try {
+    // Filter berdasarkan event yang aktif untuk mencegah kebocoran data antar event
+    const eventRes = await pool.query('SELECT id FROM events WHERE is_active = true LIMIT 1');
+    if (eventRes.rows.length === 0) return res.json([]);
+    const activeEventId = eventRes.rows[0].id;
+
     const result = await pool.query(`
       SELECT t.receipt_number, t.queue_code, t.registration_code, t.payment_queue_code, t.participant_name, t.payment_queue_status, t.payment_status, t.order_status
       FROM transactions t
-      WHERE t.participant_name ILIKE $1 OR t.receipt_number ILIKE $1 OR t.queue_code ILIKE $1 OR t.registration_code ILIKE $1 OR t.payment_queue_code ILIKE $1
+      WHERE t.event_id = $1
+        AND (t.participant_name ILIKE $2 OR t.receipt_number ILIKE $2 OR t.queue_code ILIKE $2 OR t.registration_code ILIKE $2 OR t.payment_queue_code ILIKE $2)
       ORDER BY t.created_at DESC LIMIT 10
-    `, [`%${q}%`]);
+    `, [activeEventId, `%${q}%`]);
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// Mock booth queue endpoint for compatibility
+// Compatibility route
 exports.getBoothQueue = async (req, res) => {
   try {
+    // Filter berdasarkan event aktif untuk isolasi data antar event
+    const eventRes = await pool.query('SELECT id FROM events WHERE is_active = true LIMIT 1');
+    if (eventRes.rows.length === 0) return res.json([]);
+    const activeEventId = eventRes.rows[0].id;
+
     const result = await pool.query(`
       SELECT t.id, t.receipt_number, t.queue_code, t.registration_code, t.payment_queue_code, t.participant_name, t.payment_queue_status, pc.name as category_name
       FROM transactions t
       LEFT JOIN participant_categories pc ON t.participant_category_id = pc.id
-      WHERE t.payment_status = 'MENUNGGU_PEMBAYARAN' AND t.payment_queue_status IN ('MENUNGGU', 'DIPANGGIL', 'TERLEWAT')
+      WHERE t.event_id = $1
+        AND t.payment_status = 'MENUNGGU_PEMBAYARAN'
+        AND t.payment_queue_status IN ('MENUNGGU', 'DIPANGGIL', 'TERLEWAT')
       ORDER BY t.created_at ASC
-    `);
+    `, [activeEventId]);
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });

@@ -473,8 +473,12 @@ exports.updateTransaction = async (req, res) => {
     if (items && Array.isArray(items)) {
       finalTotalAmount = 0;
       for (const item of items) {
-        const prodRes = await pool.query('SELECT p.price, p.name, c.name as category_name FROM products p LEFT JOIN product_categories c ON p.category_id = c.id WHERE p.id = $1', [item.product_id]);
-        if (prodRes.rows.length === 0) throw new Error('Produk tidak ditemukan');
+        // Validasi: produk harus milik event yang sama dengan transaksi
+        const prodRes = await pool.query(
+          'SELECT p.price, p.name, c.name as category_name FROM products p LEFT JOIN product_categories c ON p.category_id = c.id WHERE p.id = $1 AND p.event_id = $2',
+          [item.product_id, oldTrans.event_id]
+        );
+        if (prodRes.rows.length === 0) throw new Error('Produk tidak ditemukan atau bukan milik event yang sama.');
         const prod = prodRes.rows[0];
         const subtotal = prod.price * item.quantity;
         finalTotalAmount += subtotal;
