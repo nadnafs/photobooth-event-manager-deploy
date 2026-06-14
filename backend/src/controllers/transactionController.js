@@ -70,24 +70,33 @@ exports.createTransaction = async (req, res) => {
       if (boothRes.rows.length > 0) boothCode = boothRes.rows[0].code;
     }
 
-    // Count today's transactions for this event to get the running sequence (daily reset)
-    const countRes = await pool.query('SELECT COUNT(*) FROM transactions WHERE event_id = $1 AND DATE(created_at) = CURRENT_DATE', [eventId]);
-    const urut = String(parseInt(countRes.rows[0].count) + 1).padStart(3, '0');
-    const txCount = parseInt(countRes.rows[0].count) + 1;
+    // Kunci row event untuk mencegah race condition penciptaan transaksi ganda secara bersamaan
+    await pool.query('SELECT id FROM events WHERE id = $1 FOR UPDATE', [eventId]);
 
-    // Generate registration_code
-    const registrationCode = `REG-${String(txCount).padStart(5, '0')}`;
-
-    // Generate payment_queue_code
-    const eventPrefix = event.code || 'B';
-    const paymentQueueCode = `${eventPrefix}-${String(txCount).padStart(3, '0')}`;
-
-    // Generate receipt number
+    // Kalkulasi Hari Event
     const start_date = new Date(event.start_date);
     const today = new Date();
     const diffTime = Math.abs(today - start_date);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const hariFormat = `D${diffDays || 1}`;
+
+    // Hitung sequence yang aman, tidak menggunakan COUNT(*) karena rentan jika ada data terhapus
+    const lastTxRes = await pool.query('SELECT payment_queue_code FROM transactions WHERE event_id = $1 AND DATE(created_at) = CURRENT_DATE ORDER BY created_at DESC LIMIT 1', [eventId]);
+    let txCount = 1;
+    if (lastTxRes.rows.length > 0 && lastTxRes.rows[0].payment_queue_code) {
+      const parts = lastTxRes.rows[0].payment_queue_code.split('-');
+      const lastNum = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastNum)) txCount = lastNum + 1;
+    }
+
+    const urut = String(txCount).padStart(3, '0');
+
+    // Generate registration_code
+    const registrationCode = `REG-${hariFormat}-${String(txCount).padStart(5, '0')}`;
+
+    // Generate payment_queue_code (menyertakan hariFormat untuk mencegah bentrok constraint UNIQUE antar hari)
+    const eventPrefix = event.code || 'B';
+    const paymentQueueCode = `${eventPrefix}-${hariFormat}-${urut}`;
 
     const receiptNumber = (event.receipt_format || '[HARI]-[KATEGORI]-[BOOTH]-[NOMOR]')
       .replace('[EVENT]', event.code || 'EVT')

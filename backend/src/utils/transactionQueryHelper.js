@@ -76,7 +76,11 @@ const getTransactionsData = async (filters, requireEventId = true) => {
     paramIndex++; 
   }
 
-  query += ` ORDER BY t.created_at DESC`;
+  if (filters.status === 'MENUNGGU_PEMBAYARAN') {
+    query += ` ORDER BY t.created_at ASC`;
+  } else {
+    query += ` ORDER BY t.created_at DESC`;
+  }
 
   const result = await pool.query(query, params);
 
