@@ -288,8 +288,27 @@ exports.verifyPayment = async (req, res) => {
       nextNumber = eventSettings.receipt_start_number;
     }
 
-    const paddedNumber = String(nextNumber).padStart(eventSettings.receipt_digit_length, '0');
-    const newReceiptNumber = `${eventSettings.receipt_prefix}${eventSettings.receipt_separator || ''}${paddedNumber}`;
+    const prefixStr = `${eventSettings.receipt_prefix}${eventSettings.receipt_separator || ''}`;
+    
+    // Fetch all existing receipt numbers with this prefix to avoid collision loops safely
+    const usedRes = await pool.query(`
+      SELECT receipt_number FROM transactions WHERE event_id = $1 AND receipt_number LIKE $2
+    `, [trans.event_id, `${prefixStr}%`]);
+    const usedNumbers = new Set(usedRes.rows.map(r => r.receipt_number));
+
+    let isUnique = false;
+    let paddedNumber;
+    let newReceiptNumber;
+
+    while (!isUnique) {
+      paddedNumber = String(nextNumber).padStart(eventSettings.receipt_digit_length, '0');
+      newReceiptNumber = `${prefixStr}${paddedNumber}`;
+      if (!usedNumbers.has(newReceiptNumber)) {
+        isUnique = true;
+      } else {
+        nextNumber++;
+      }
+    }
 
     await pool.query(`
       UPDATE events SET receipt_current_number = $1 WHERE id = $2

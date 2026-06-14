@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 const ListTransaksi = () => {
   const { token, user } = useAuth();
   const [activeEventContext, setActiveEventContext] = useState(null);
+  const [categories, setCategories] = useState([]);
 
   // Data lists
   const [transactions, setTransactions] = useState([]);
@@ -28,7 +29,7 @@ const ListTransaksi = () => {
 
   // Table filters & Tab state
   const [activeTab, setActiveTab] = useState('MENUNGGU_PEMBAYARAN');
-  const [filters, setFilters] = useState({ q: '', status: 'MENUNGGU_PEMBAYARAN', payment_method: '' });
+  const [filters, setFilters] = useState({ q: '', status: 'MENUNGGU_PEMBAYARAN', payment_method: '', category_id: '' });
 
   // Statistics state
   const [stats, setStats] = useState({
@@ -120,14 +121,31 @@ const ListTransaksi = () => {
     fetchStats(eventId);
   };
 
-  // Trigger data load on filter change or socket events
   useEffect(() => {
     if (user?.role === 'OWNER') {
       if (selectedOwnerEventId) loadAllData(selectedOwnerEventId);
     } else {
       if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
     }
-  }, [filters, activeEventContext?.event?.id, selectedOwnerEventId, user?.role]);
+  }, [filters.q, filters.status, filters.payment_method, filters.category_id, activeEventContext?.event?.id, selectedOwnerEventId, user?.role]);
+
+  // Fetch categories when event changes
+  useEffect(() => {
+    const fetchCategoriesForEvent = async (eventId) => {
+      try {
+        const res = await apiClient.get(`/events/${eventId}/participant-categories`);
+        setCategories(res.data || []);
+      } catch(err) {
+        console.error(err);
+      }
+    };
+    const currentEventId = user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id;
+    if (currentEventId) {
+      fetchCategoriesForEvent(currentEventId);
+      // Reset selected category when event changes
+      setFilters(prev => ({ ...prev, category_id: '' }));
+    }
+  }, [selectedOwnerEventId, activeEventContext?.event?.id, user?.role]);
 
   // Fetch events if user is OWNER
   useEffect(() => {
@@ -386,12 +404,22 @@ const ListTransaksi = () => {
           >
             <Volume2 size={16} className="text-indigo-500" /> Tes Suara TV
           </button>
-          <button
-            onClick={handleExportPDF}
-            className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-sm text-sm"
-          >
-            <Download size={16} /> Export PDF
-          </button>
+          <div className="flex items-center gap-2 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
+            <select
+              className="px-3 py-1.5 rounded-lg bg-transparent text-slate-700 font-medium outline-none text-sm border-none focus:ring-0 max-w-[150px] truncate"
+              value={filters.category_id}
+              onChange={e => setFilters({ ...filters, category_id: e.target.value })}
+            >
+              <option value="">Semua Kategori</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button
+              onClick={handleExportPDF}
+              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-slate-800 transition-colors text-sm"
+            >
+              <Download size={16} /> Export PDF
+            </button>
+          </div>
         </div>
       </div>
 

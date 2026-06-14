@@ -142,4 +142,24 @@ const resetReceiptNumber = async (req, res) => {
   }
 };
 
-module.exports = { getEvents, getEventById, createEvent, updateEvent, updateEventStatus, resetReceiptNumber };
+const deleteEvent = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const eventRes = await pool.query('SELECT * FROM events WHERE id = $1', [id]);
+    if (eventRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Event tidak ditemukan.' });
+    }
+
+    if (eventRes.rows[0].is_active) {
+      return res.status(400).json({ message: 'Event yang sedang aktif tidak dapat dihapus. Nonaktifkan terlebih dahulu.' });
+    }
+
+    await pool.query('DELETE FROM events WHERE id = $1', [id]);
+    res.json({ message: 'Event beserta seluruh datanya berhasil dihapus.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Terjadi kesalahan saat menghapus event.' });
+  }
+};
+
+module.exports = { getEvents, getEventById, createEvent, updateEvent, updateEventStatus, resetReceiptNumber, deleteEvent };

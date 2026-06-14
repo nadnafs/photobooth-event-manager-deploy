@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../../services/apiClient';
-import { Plus, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Plus, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const KelolaEvent = () => {
@@ -34,6 +34,23 @@ const KelolaEvent = () => {
       fetchEvents();
     } catch (error) {
       alert('Gagal merubah status event');
+    }
+  };
+
+  const handleDelete = async (id, name, isActive) => {
+    if (isActive) {
+      alert('Event yang sedang aktif tidak dapat dihapus. Nonaktifkan atau ubah status menjadi Selesai terlebih dahulu.');
+      return;
+    }
+    
+    if(!window.confirm(`PERINGATAN KRITIS!\n\nApakah Anda yakin ingin MENGHAPUS PERMANEN event "${name}"?\nSemua data transaksi, pendaftar, kategori, produk, dan booth yang terhubung dengan event ini akan IKUT TERHAPUS.\n\nTindakan ini TIDAK DAPAT DIBATALKAN.`)) return;
+    
+    try {
+      await apiClient.delete(`/events/${id}`);
+      fetchEvents();
+      alert('Event berhasil dihapus.');
+    } catch (error) {
+      alert(error.response?.data?.message || 'Gagal menghapus event.');
     }
   };
 
@@ -104,6 +121,15 @@ const KelolaEvent = () => {
                   )}
                   {event.status === 'AKTIF' && (
                     <button onClick={() => handleStatusChange(event.id, 'SELESAI')} className="text-sm px-3 py-1.5 bg-warning/10 text-warning rounded-lg font-medium hover:bg-warning/20">Selesaikan</button>
+                  )}
+                  {(!event.is_active || event.status !== 'AKTIF') && (
+                    <button 
+                      onClick={() => handleDelete(event.id, event.name, event.is_active || event.status === 'AKTIF')} 
+                      className="text-sm px-2 py-1.5 bg-danger/10 text-danger rounded-lg font-medium hover:bg-danger hover:text-white transition-colors"
+                      title="Hapus Event"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   )}
                 </td>
               </tr>

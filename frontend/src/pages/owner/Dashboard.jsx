@@ -7,6 +7,8 @@ const OwnerDashboard = () => {
   const [data, setData] = useState(null);
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -46,7 +48,21 @@ const OwnerDashboard = () => {
         }
       }
     };
+
+    const fetchCategories = async () => {
+      try {
+        const res = await apiClient.get(`/events/${selectedEventId}/participant-categories`);
+        if (isMounted) {
+          setCategories(res.data || []);
+          setSelectedCategoryId(''); // Reset category when event changes
+        }
+      } catch (err) {
+        console.error('Failed to fetch categories');
+      }
+    };
+
     fetchData();
+    fetchCategories();
 
     return () => { isMounted = false; };
   }, [selectedEventId]);
@@ -54,7 +70,7 @@ const OwnerDashboard = () => {
   const handleExport = async () => {
     if (!selectedEventId) return alert('Silakan pilih event terlebih dahulu.');
     try {
-      const url = `/reports/transactions-export?event_id=${selectedEventId}`;
+      const url = `/reports/transactions-export?event_id=${selectedEventId}${selectedCategoryId ? `&category_id=${selectedCategoryId}` : ''}`;
 
       const response = await apiClient.get(url, {
         responseType: 'blob'
@@ -86,7 +102,7 @@ const OwnerDashboard = () => {
           <h1 className="text-3xl font-bold mb-2">Dashboard Owner</h1>
           <p className="text-slate-300">Statistik Keseluruhan</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap justify-end gap-4 mt-4 md:mt-0">
           <select 
             className="px-4 py-2 rounded-xl bg-slate-800 text-white border border-slate-700 max-w-[200px] truncate"
             value={selectedEventId}
@@ -102,12 +118,24 @@ const OwnerDashboard = () => {
           >
             <Monitor size={20} /> Buka TV Antrian
           </a>
-          <button 
-            onClick={handleExport}
-            className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-colors font-medium"
-          >
-            <FileDown size={20} /> Export PDF
-          </button>
+          <div className="flex gap-2 items-center bg-slate-800/50 p-1.5 rounded-xl border border-slate-700/50">
+            <select
+              className="px-3 py-1.5 rounded-lg bg-slate-800 text-white border border-slate-600 outline-none focus:border-primary text-sm"
+              value={selectedCategoryId}
+              onChange={e => setSelectedCategoryId(e.target.value)}
+            >
+              <option value="">Semua Kategori</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <button 
+              onClick={handleExport}
+              className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-colors font-medium text-sm"
+            >
+              <FileDown size={18} /> Export PDF
+            </button>
+          </div>
         </div>
       </div>
 

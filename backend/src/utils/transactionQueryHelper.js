@@ -76,6 +76,12 @@ const getTransactionsData = async (filters, requireEventId = true) => {
     paramIndex++; 
   }
 
+  // Category Filter
+  if (filters.category_id && filters.category_id !== 'ALL') {
+    query += ` AND t.participant_category_id = $${paramIndex++}`;
+    params.push(filters.category_id);
+  }
+
   if (filters.status === 'MENUNGGU_PEMBAYARAN') {
     query += ` ORDER BY t.created_at ASC`;
   } else {
