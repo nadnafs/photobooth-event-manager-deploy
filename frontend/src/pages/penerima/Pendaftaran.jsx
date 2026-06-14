@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Plus, Trash, Check, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ListPendaftar from './ListPendaftar';
+import toast from 'react-hot-toast';
 
 const Pendaftaran = () => {
   const [context, setContext] = useState(null);
@@ -75,8 +76,9 @@ const Pendaftaran = () => {
       });
       // Memaksa ListPendaftar mereload antrean melalui custom event
       window.dispatchEvent(new Event('transactionAdded'));
+      toast.success('Pendaftaran berhasil disimpan!');
     } catch (error) {
-      alert(error.response?.data?.message || 'Gagal menyimpan');
+      toast.error(error.response?.data?.message || 'Gagal menyimpan');
     } finally {
       setIsSubmitting(false);
     }

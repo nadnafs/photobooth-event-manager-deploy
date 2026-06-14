@@ -2,11 +2,9 @@ import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import ParticipantCategoryTab from '../../components/master/ParticipantCategoryTab';
-import ProductCategoryTab from '../../components/master/ProductCategoryTab';
 import ProductTab from '../../components/master/ProductTab';
 import BoothTab from '../../components/master/BoothTab';
 import PrintSettingsTab from './components/PrintSettingsTab';
-import ReceiptSettingsTab from './components/ReceiptSettingsTab';
 
 const DetailEvent = () => {
   const { id: eventId } = useParams();
@@ -14,11 +12,9 @@ const DetailEvent = () => {
 
   const tabs = [
     { id: 'peserta', name: 'Kategori Peserta' },
-    { id: 'kategori_produk', name: 'Kategori Produk' },
     { id: 'produk', name: 'Produk / Layanan' },
     { id: 'booth', name: 'Booth / Layar' },
     { id: 'cetak', name: 'Pengaturan Cetak' },
-    { id: 'nota', name: 'Pengaturan Nomor Nota' },
   ];
 
   return (
@@ -42,12 +38,10 @@ const DetailEvent = () => {
         </div>
         
         <div className="p-6">
-          {activeTab === 'peserta' && <ParticipantCategoryTab eventId={eventId} />}
-          {activeTab === 'kategori_produk' && <ProductCategoryTab eventId={eventId} />}
+          { activeTab === 'peserta' && <ParticipantCategoryTab eventId={eventId} />}
           { activeTab === 'produk' && <ProductTab eventId={eventId} /> }
           { activeTab === 'booth' && <BoothTab eventId={eventId} /> }
           { activeTab === 'cetak' && <PrintSettingsTab eventId={eventId} /> }
-          { activeTab === 'nota' && <ReceiptSettingsTab eventId={eventId} /> }
         </div>
       </div>
     </div>

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../../services/apiClient';
-import { Plus, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
+import { Plus, CheckCircle, XCircle, Clock, Trash2, Edit2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 const KelolaEvent = () => {
   const [events, setEvents] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     name: '', code: '', location: '', start_date: '', end_date: '', total_days: 1,
     receipt_format: '[HARI]-[KATEGORI]-[BOOTH]-[NOMOR]',
@@ -13,6 +15,39 @@ const KelolaEvent = () => {
     tv_subtitle: 'Silakan menuju booth sesuai nomor antrian.',
     notes: ''
   });
+
+  const resetForm = () => {
+    setFormData({
+      name: '', code: '', location: '', start_date: '', end_date: '', total_days: 1,
+      receipt_format: '[HARI]-[KATEGORI]-[BOOTH]-[NOMOR]',
+      tv_title: 'PHOTOBOOTH EVENT',
+      tv_subtitle: 'Silakan menuju booth sesuai nomor antrian.',
+      notes: ''
+    });
+    setEditingId(null);
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setIsModalOpen(true);
+  };
+
+  const handleEditClick = (event) => {
+    setFormData({
+      name: event.name || '',
+      code: event.code || '',
+      location: event.location || '',
+      start_date: event.start_date ? event.start_date.split('T')[0] : '',
+      end_date: event.end_date ? event.end_date.split('T')[0] : '',
+      total_days: event.total_days || 1,
+      receipt_format: event.receipt_format || '[HARI]-[KATEGORI]-[BOOTH]-[NOMOR]',
+      tv_title: event.tv_title || 'PHOTOBOOTH EVENT',
+      tv_subtitle: event.tv_subtitle || 'Silakan menuju booth sesuai nomor antrian.',
+      notes: event.notes || ''
+    });
+    setEditingId(event.id);
+    setIsModalOpen(true);
+  };
 
   const fetchEvents = async () => {
     try {
@@ -57,18 +92,18 @@ const KelolaEvent = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await apiClient.post('/events', formData);
+      if (editingId) {
+        await apiClient.put(`/events/${editingId}`, formData);
+        toast.success('Event berhasil diperbarui!');
+      } else {
+        await apiClient.post('/events', formData);
+        toast.success('Event berhasil ditambahkan!');
+      }
       setIsModalOpen(false);
       fetchEvents();
-      setFormData({
-        name: '', code: '', location: '', start_date: '', end_date: '', total_days: 1,
-        receipt_format: '[HARI]-[KATEGORI]-[BOOTH]-[NOMOR]',
-        tv_title: 'PHOTOBOOTH EVENT',
-        tv_subtitle: 'Silakan menuju booth sesuai nomor antrian.',
-        notes: ''
-      });
+      resetForm();
     } catch (error) {
-      alert(error.response?.data?.message || 'Gagal menyimpan event');
+      toast.error(error.response?.data?.message || 'Gagal menyimpan event');
     }
   };
 
@@ -83,7 +118,7 @@ const KelolaEvent = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-textMain">Kelola Event</h1>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={openAddModal}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-white font-medium rounded-xl hover:bg-blue-700 transition-colors"
         >
           <Plus size={20} />
@@ -116,6 +151,13 @@ const KelolaEvent = () => {
                 <td className="px-6 py-4"><StatusBadge status={event.status || (event.is_active ? 'AKTIF' : 'NONAKTIF')} /></td>
                 <td className="px-6 py-4 text-right space-x-2">
                   <Link to={`/kasir/events/${event.id}`} className="inline-block text-sm px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100">Detail / Kelola</Link>
+                  <button 
+                    onClick={() => handleEditClick(event)} 
+                    className="text-sm px-2 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-medium hover:bg-indigo-100 transition-colors"
+                    title="Edit Data Event"
+                  >
+                    <Edit2 size={16} />
+                  </button>
                   {event.status !== 'AKTIF' && (
                     <button onClick={() => handleStatusChange(event.id, 'AKTIF')} className="text-sm px-3 py-1.5 bg-success/10 text-success rounded-lg font-medium hover:bg-success/20">Set Aktif</button>
                   )}
@@ -141,12 +183,12 @@ const KelolaEvent = () => {
         </table>
       </div>
 
-      {/* Modal Tambah Event */}
+      {/* Modal Tambah / Edit Event */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-card w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-border flex justify-between items-center">
-              <h2 className="text-xl font-bold text-textMain">Tambah Event Baru</h2>
+              <h2 className="text-xl font-bold text-textMain">{editingId ? 'Edit Data Event' : 'Tambah Event Baru'}</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-textSecondary hover:text-danger"><XCircle size={24} /></button>
             </div>
             

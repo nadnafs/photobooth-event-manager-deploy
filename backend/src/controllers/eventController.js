@@ -45,8 +45,8 @@ const createEvent = async (req, res) => {
     ]);
     res.status(201).json({ message: 'Event berhasil ditambahkan', event: result.rows[0] });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Gagal menambahkan event. Pastikan kode event unik.' });
+    console.error('Error createEvent:', error);
+    res.status(500).json({ message: `Gagal menambahkan event: ${error.message || 'Pastikan kode event unik.'}` });
   }
 };
 

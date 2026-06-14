@@ -4,6 +4,7 @@ import env from '../../config/env';
 import { useAuth } from '../../context/AuthContext';
 import { getSocket } from '../../services/socketService';
 import { QRCodeSVG } from 'qrcode.react'; // kept for future use
+import toast from 'react-hot-toast';
 import {
   Search, Printer, Download, Trash2, Edit2,
   Volume2, Monitor, Info, Check, Play, AlertTriangle,
@@ -135,7 +136,7 @@ const ListTransaksi = () => {
       try {
         const res = await apiClient.get(`/events/${eventId}/participant-categories`);
         setCategories(res.data || []);
-      } catch(err) {
+      } catch (err) {
         console.error(err);
       }
     };
@@ -272,8 +273,9 @@ const ListTransaksi = () => {
       if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
         loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
       }
+      toast.success('Pembayaran berhasil diverifikasi!');
     } catch (error) {
-      alert(error.response?.data?.message || 'Gagal memverifikasi pembayaran');
+      toast.error(error.response?.data?.message || 'Gagal memverifikasi pembayaran');
     } finally {
       setIsSubmittingCheckout(false);
     }
@@ -347,7 +349,7 @@ const ListTransaksi = () => {
     try {
       const queryParams = new URLSearchParams({ ...filters, event_id: currentEventId }).toString();
       const url = `/transactions/export/pdf?${queryParams}`;
-      
+
       const response = await apiClient.get(url, {
         responseType: 'blob'
       });
@@ -518,45 +520,7 @@ const ListTransaksi = () => {
       )}
 
 
-      {/* 3. STATISTICS GRID */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-card p-5 rounded-2xl border border-border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
-            <Clock size={24} />
-          </div>
-          <div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Menunggu</p>
-            <h4 className="text-2xl font-black text-slate-800">{stats.waitingCount}</h4>
-          </div>
-        </div>
-        <div className="bg-card p-5 rounded-2xl border border-border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
-            <Volume2 size={24} />
-          </div>
-          <div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Panggilan Aktif</p>
-            <h4 className="text-2xl font-black text-slate-800">{stats.calledCount}</h4>
-          </div>
-        </div>
-        <div className="bg-card p-5 rounded-2xl border border-border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
-            <Check size={24} />
-          </div>
-          <div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Lunas Hari Ini</p>
-            <h4 className="text-2xl font-black text-slate-800">{stats.paidCount}</h4>
-          </div>
-        </div>
-        <div className="bg-card p-5 rounded-2xl border border-border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-teal-50 rounded-xl text-teal-600">
-            <DollarSign size={24} />
-          </div>
-          <div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Pendapatan Hari Ini</p>
-            <h4 className="text-xl font-black text-slate-800 truncate">{formatRp(stats.totalRevenue)}</h4>
-          </div>
-        </div>
-      </div>
+
 
       {/* 4. FILTER BAR & LIST TABULATION */}
       <div className="bg-card rounded-2xl shadow-sm border border-border overflow-hidden">
@@ -568,8 +532,8 @@ const ListTransaksi = () => {
               key={tabId}
               onClick={() => handleTabChange(tabId)}
               className={`px-5 py-3 font-black text-sm border-b-2 transition-all relative ${activeTab === tabId
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
             >
               {tabId === 'MENUNGGU_PEMBAYARAN' && 'Menunggu Pembayaran'}
@@ -937,8 +901,8 @@ const ListTransaksi = () => {
                 <button
                   onClick={() => setPaymentMethod('TUNAI')}
                   className={`py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all ${paymentMethod === 'TUNAI'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
                     }`}
                   disabled={isSubmittingCheckout}
                 >
@@ -947,8 +911,8 @@ const ListTransaksi = () => {
                 <button
                   onClick={() => setPaymentMethod('QRIS')}
                   className={`py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all ${paymentMethod === 'QRIS'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
                     }`}
                   disabled={isSubmittingCheckout}
                 >

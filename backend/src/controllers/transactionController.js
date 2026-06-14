@@ -80,30 +80,40 @@ exports.createTransaction = async (req, res) => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const hariFormat = `D${diffDays || 1}`;
 
-    // Hitung sequence yang aman, tidak menggunakan COUNT(*) karena rentan jika ada data terhapus
-    const lastTxRes = await pool.query('SELECT payment_queue_code FROM transactions WHERE event_id = $1 AND DATE(created_at) = CURRENT_DATE ORDER BY created_at DESC LIMIT 1', [eventId]);
-    let txCount = 1;
-    if (lastTxRes.rows.length > 0 && lastTxRes.rows[0].payment_queue_code) {
-      const parts = lastTxRes.rows[0].payment_queue_code.split('-');
-      const lastNum = parseInt(parts[parts.length - 1], 10);
-      if (!isNaN(lastNum)) txCount = lastNum + 1;
+    // Cari txCount awal berdasarkan jumlah transaksi hari ini
+    const countRes = await pool.query('SELECT COUNT(*) as count FROM transactions WHERE event_id = $1 AND DATE(created_at) = CURRENT_DATE', [eventId]);
+    let txCount = parseInt(countRes.rows[0].count) + 1;
+
+    let isUnique = false;
+    let unifiedCode = '';
+
+    // Loop untuk memastikan kode benar-benar unik dan tidak tabrakan dengan data yang sudah ada/dihapus
+    while (!isUnique) {
+      const urut = String(txCount).padStart(3, '0');
+      unifiedCode = (event.receipt_format || '[HARI]-[KATEGORI]-[BOOTH]-[NOMOR]')
+        .replace('[EVENT]', event.code || 'EVT')
+        .replace('[HARI]', hariFormat)
+        .replace('[KATEGORI]', categoryCode)
+        .replace('[BOOTH]', boothCode)
+        .replace('[NOMOR]', urut);
+
+      // Cek apakah kode ini sudah pernah dipakai di event ini
+      const checkRes = await pool.query(
+        'SELECT id FROM transactions WHERE event_id = $1 AND (receipt_number = $2 OR queue_code = $2 OR payment_queue_code = $2 OR registration_code = $2)', 
+        [eventId, unifiedCode]
+      );
+      
+      if (checkRes.rows.length === 0) {
+        isUnique = true;
+      } else {
+        txCount++;
+      }
     }
 
-    const urut = String(txCount).padStart(3, '0');
-
-    // Generate registration_code
-    const registrationCode = `REG-${hariFormat}-${String(txCount).padStart(5, '0')}`;
-
-    // Generate payment_queue_code (menyertakan hariFormat untuk mencegah bentrok constraint UNIQUE antar hari)
-    const eventPrefix = event.code || 'B';
-    const paymentQueueCode = `${eventPrefix}-${hariFormat}-${urut}`;
-
-    const receiptNumber = (event.receipt_format || '[HARI]-[KATEGORI]-[BOOTH]-[NOMOR]')
-      .replace('[EVENT]', event.code || 'EVT')
-      .replace('[HARI]', hariFormat)
-      .replace('[KATEGORI]', categoryCode)
-      .replace('[BOOTH]', boothCode)
-      .replace('[NOMOR]', urut);
+    // Gunakan satu kode yang sama persis untuk semua fungsi (Nota, Pendaftaran, Antrean Kasir, Antrean TV)
+    const receiptNumber = unifiedCode;
+    const registrationCode = unifiedCode;
+    const paymentQueueCode = unifiedCode;
 
     // Calculate total
     let total_amount = 0;
@@ -273,47 +283,6 @@ exports.verifyPayment = async (req, res) => {
       finalAmountReceived = trans.total_amount;
       finalChangeAmount = 0;
     }
-
-    const eventLockRes = await pool.query(`
-      SELECT receipt_prefix, receipt_separator, receipt_start_number, receipt_digit_length, receipt_current_number
-      FROM events
-      WHERE id = $1 FOR UPDATE
-    `, [trans.event_id]);
-
-    if (eventLockRes.rows.length === 0) throw new Error('Event tidak ditemukan');
-    const eventSettings = eventLockRes.rows[0];
-
-    let nextNumber = eventSettings.receipt_current_number + 1;
-    if (nextNumber < eventSettings.receipt_start_number) {
-      nextNumber = eventSettings.receipt_start_number;
-    }
-
-    const prefixStr = `${eventSettings.receipt_prefix}${eventSettings.receipt_separator || ''}`;
-    
-    // Fetch all existing receipt numbers with this prefix to avoid collision loops safely
-    const usedRes = await pool.query(`
-      SELECT receipt_number FROM transactions WHERE event_id = $1 AND receipt_number LIKE $2
-    `, [trans.event_id, `${prefixStr}%`]);
-    const usedNumbers = new Set(usedRes.rows.map(r => r.receipt_number));
-
-    let isUnique = false;
-    let paddedNumber;
-    let newReceiptNumber;
-
-    while (!isUnique) {
-      paddedNumber = String(nextNumber).padStart(eventSettings.receipt_digit_length, '0');
-      newReceiptNumber = `${prefixStr}${paddedNumber}`;
-      if (!usedNumbers.has(newReceiptNumber)) {
-        isUnique = true;
-      } else {
-        nextNumber++;
-      }
-    }
-
-    await pool.query(`
-      UPDATE events SET receipt_current_number = $1 WHERE id = $2
-    `, [nextNumber, trans.event_id]);
-
     // Update Transaction
     const updateRes = await pool.query(`
       UPDATE transactions 
@@ -323,10 +292,9 @@ exports.verifyPayment = async (req, res) => {
           amount_received = $2,
           change_amount = $3,
           verified_by = $4,
-          verified_at = NOW(),
-          receipt_number = $5
-      WHERE id = $6 RETURNING *
-    `, [payment_method, finalAmountReceived, finalChangeAmount, req.user.id, newReceiptNumber, id]);
+          verified_at = NOW()
+      WHERE id = $5 RETURNING *
+    `, [payment_method, finalAmountReceived, finalChangeAmount, req.user.id, id]);
 
     // Insert Payment Log
     await pool.query(`
