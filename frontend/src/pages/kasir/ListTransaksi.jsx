@@ -321,13 +321,29 @@ const ListTransaksi = () => {
     setFilters(prev => ({ ...prev, status: tabId }));
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const currentEventId = user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id;
     if (!currentEventId) {
       return alert('Event aktif tidak ditemukan. Tidak dapat melakukan export.');
     }
-    const queryParams = new URLSearchParams({ ...filters, event_id: currentEventId }).toString();
-    window.open(`${env.apiUrl}/transactions/export/pdf?${queryParams}&token=${token}`, '_blank');
+    try {
+      const queryParams = new URLSearchParams({ ...filters, event_id: currentEventId }).toString();
+      const url = `/transactions/export/pdf?${queryParams}`;
+      
+      const response = await apiClient.get(url, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `Laporan_Transaksi_${new Date().toISOString().split('T')[0]}.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Failed to export PDF', error);
+      alert('Gagal mengexport PDF. Pastikan data transaksi tersedia.');
+    }
   };
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
