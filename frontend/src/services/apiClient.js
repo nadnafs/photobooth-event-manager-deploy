@@ -3,6 +3,7 @@ import env from '../config/env';
 
 const apiClient = axios.create({
   baseURL: env.apiUrl,
+  timeout: 15000, // 15 detik untuk request biasa
 });
 
 apiClient.interceptors.request.use(

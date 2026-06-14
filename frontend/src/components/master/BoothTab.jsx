@@ -6,6 +6,8 @@ const BoothTab = ({ eventId }) => {
   const [data, setData] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ id: null, name: '', code: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [togglingId, setTogglingId] = useState(null);
 
   const fetchData = async () => {
     try {
@@ -18,7 +20,9 @@ const BoothTab = ({ eventId }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     try {
+      setIsSubmitting(true);
       if (formData.id) {
         await apiClient.put(`/booths/${formData.id}`, formData);
       } else {
@@ -26,14 +30,20 @@ const BoothTab = ({ eventId }) => {
       }
       setIsModalOpen(false);
       fetchData();
-    } catch (error) { alert('Gagal menyimpan'); }
+    } catch (error) { alert('Gagal menyimpan'); } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleToggle = async (id, currentStatus) => {
+    if (togglingId) return;
     try {
+      setTogglingId(id);
       await apiClient.patch(`/booths/${id}/status`, { is_active: !currentStatus });
       fetchData();
-    } catch (error) { alert('Gagal update status'); }
+    } catch (error) { alert('Gagal update status'); } finally {
+      setTogglingId(null);
+    }
   };
 
   return (
@@ -65,8 +75,12 @@ const BoothTab = ({ eventId }) => {
                 </td>
                 <td className="px-4 py-3 text-right space-x-2">
                   <button onClick={() => { setFormData(item); setIsModalOpen(true); }} className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-medium">Edit</button>
-                  <button onClick={() => handleToggle(item.id, item.is_active)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium">
-                    {item.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                  <button
+                    onClick={() => handleToggle(item.id, item.is_active)}
+                    disabled={togglingId === item.id}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {togglingId === item.id ? '...' : (item.is_active ? 'Nonaktifkan' : 'Aktifkan')}
                   </button>
                 </td>
               </tr>
@@ -90,8 +104,10 @@ const BoothTab = ({ eventId }) => {
                 <input required className="w-full border border-border p-2 rounded-lg outline-none focus:ring-2 focus:ring-primary/50" value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} placeholder="Contoh: A" />
               </div>
               <div className="flex justify-end gap-2 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded-lg hover:bg-slate-50 font-medium">Batal</button>
-                <button type="submit" className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 font-medium">Simpan</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 border rounded-lg hover:bg-slate-50 font-medium disabled:opacity-60">Batal</button>
+                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan'}
+                </button>
               </div>
             </form>
           </div>

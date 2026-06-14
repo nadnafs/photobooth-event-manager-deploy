@@ -9,6 +9,7 @@ const OwnerDashboard = () => {
   const [selectedEventId, setSelectedEventId] = useState('');
   const [categories, setCategories] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -68,12 +69,15 @@ const OwnerDashboard = () => {
   }, [selectedEventId]);
 
   const handleExport = async () => {
+    if (isExporting) return;
     if (!selectedEventId) return alert('Silakan pilih event terlebih dahulu.');
     try {
+      setIsExporting(true);
       const url = `/reports/transactions-export?event_id=${selectedEventId}${selectedCategoryId ? `&category_id=${selectedCategoryId}` : ''}`;
 
       const response = await apiClient.get(url, {
-        responseType: 'blob'
+        responseType: 'blob',
+        timeout: 60000, // 60 detik untuk export PDF
       });
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -87,6 +91,8 @@ const OwnerDashboard = () => {
     } catch (error) {
       console.error('Failed to export PDF');
       alert('Gagal mengexport PDF');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -131,9 +137,10 @@ const OwnerDashboard = () => {
             </select>
             <button 
               onClick={handleExport}
-              className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-colors font-medium text-sm"
+              disabled={isExporting}
+              className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-colors font-medium text-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <FileDown size={18} /> Export PDF
+              <FileDown size={18} /> {isExporting ? 'Mengexport...' : 'Export PDF'}
             </button>
           </div>
         </div>

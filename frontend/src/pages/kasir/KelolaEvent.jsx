@@ -8,6 +8,9 @@ const KelolaEvent = () => {
   const [events, setEvents] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [loadingStatusId, setLoadingStatusId] = useState(null); // id event yang sedang diubah statusnya
+  const [loadingDeleteId, setLoadingDeleteId] = useState(null); // id event yang sedang dihapus
   const [formData, setFormData] = useState({
     name: '', code: '', location: '', start_date: '', end_date: '', total_days: 1,
     receipt_format: '[HARI]-[KATEGORI]-[BOOTH]-[NOMOR]',
@@ -63,16 +66,21 @@ const KelolaEvent = () => {
   }, []);
 
   const handleStatusChange = async (id, status) => {
+    if (loadingStatusId) return;
     if(!window.confirm(`Yakin mengubah status event menjadi ${status}?`)) return;
     try {
+      setLoadingStatusId(id);
       await apiClient.put(`/events/${id}/status`, { status });
       fetchEvents();
     } catch (error) {
       alert('Gagal merubah status event');
+    } finally {
+      setLoadingStatusId(null);
     }
   };
 
   const handleDelete = async (id, name, isActive) => {
+    if (loadingDeleteId) return;
     if (isActive) {
       alert('Event yang sedang aktif tidak dapat dihapus. Nonaktifkan atau ubah status menjadi Selesai terlebih dahulu.');
       return;
@@ -81,17 +89,22 @@ const KelolaEvent = () => {
     if(!window.confirm(`PERINGATAN KRITIS!\n\nApakah Anda yakin ingin MENGHAPUS PERMANEN event "${name}"?\nSemua data transaksi, pendaftar, kategori, produk, dan booth yang terhubung dengan event ini akan IKUT TERHAPUS.\n\nTindakan ini TIDAK DAPAT DIBATALKAN.`)) return;
     
     try {
+      setLoadingDeleteId(id);
       await apiClient.delete(`/events/${id}`);
       fetchEvents();
       alert('Event berhasil dihapus.');
     } catch (error) {
       alert(error.response?.data?.message || 'Gagal menghapus event.');
+    } finally {
+      setLoadingDeleteId(null);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmittingForm) return;
     try {
+      setIsSubmittingForm(true);
       if (editingId) {
         await apiClient.put(`/events/${editingId}`, formData);
         toast.success('Event berhasil diperbarui!');
@@ -104,6 +117,8 @@ const KelolaEvent = () => {
       resetForm();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Gagal menyimpan event');
+    } finally {
+      setIsSubmittingForm(false);
     }
   };
 
@@ -159,18 +174,31 @@ const KelolaEvent = () => {
                     <Edit2 size={16} />
                   </button>
                   {event.status !== 'AKTIF' && (
-                    <button onClick={() => handleStatusChange(event.id, 'AKTIF')} className="text-sm px-3 py-1.5 bg-success/10 text-success rounded-lg font-medium hover:bg-success/20">Set Aktif</button>
+                    <button
+                      onClick={() => handleStatusChange(event.id, 'AKTIF')}
+                      disabled={loadingStatusId === event.id}
+                      className="text-sm px-3 py-1.5 bg-success/10 text-success rounded-lg font-medium hover:bg-success/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {loadingStatusId === event.id ? 'Mengubah...' : 'Set Aktif'}
+                    </button>
                   )}
                   {event.status === 'AKTIF' && (
-                    <button onClick={() => handleStatusChange(event.id, 'SELESAI')} className="text-sm px-3 py-1.5 bg-warning/10 text-warning rounded-lg font-medium hover:bg-warning/20">Selesaikan</button>
+                    <button
+                      onClick={() => handleStatusChange(event.id, 'SELESAI')}
+                      disabled={loadingStatusId === event.id}
+                      className="text-sm px-3 py-1.5 bg-warning/10 text-warning rounded-lg font-medium hover:bg-warning/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {loadingStatusId === event.id ? 'Mengubah...' : 'Selesaikan'}
+                    </button>
                   )}
                   {(!event.is_active || event.status !== 'AKTIF') && (
                     <button 
                       onClick={() => handleDelete(event.id, event.name, event.is_active || event.status === 'AKTIF')} 
-                      className="text-sm px-2 py-1.5 bg-danger/10 text-danger rounded-lg font-medium hover:bg-danger hover:text-white transition-colors"
+                      disabled={loadingDeleteId === event.id}
+                      className="text-sm px-2 py-1.5 bg-danger/10 text-danger rounded-lg font-medium hover:bg-danger hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                       title="Hapus Event"
                     >
-                      <Trash2 size={16} />
+                      {loadingDeleteId === event.id ? '...' : <Trash2 size={16} />}
                     </button>
                   )}
                 </td>
@@ -243,8 +271,10 @@ const KelolaEvent = () => {
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded-lg font-medium hover:bg-slate-50 transition-colors">Batal</button>
-                <button type="submit" className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">Simpan Event</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmittingForm} className="px-4 py-2 border rounded-lg font-medium hover:bg-slate-50 transition-colors disabled:opacity-60">Batal</button>
+                <button type="submit" disabled={isSubmittingForm} className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2">
+                  {isSubmittingForm ? 'Menyimpan...' : 'Simpan Event'}
+                </button>
               </div>
             </form>
           </div>

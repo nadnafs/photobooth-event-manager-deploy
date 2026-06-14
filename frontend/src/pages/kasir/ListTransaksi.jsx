@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../../services/apiClient';
 import env from '../../config/env';
 import { useAuth } from '../../context/AuthContext';
@@ -52,6 +52,22 @@ const ListTransaksi = () => {
   const [amountReceived, setAmountReceived] = useState('');
   const [checkoutNotes, setCheckoutNotes] = useState('');
   const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
+
+  // Queue action loading states (per-action, per-id where needed)
+  const [isCallingNext, setIsCallingNext] = useState(false);
+  const [recallingId, setRecallingId] = useState(null);
+  const [skippingId, setSkippingId] = useState(null);
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
+  const [isDeleteSubmitting, setIsDeleteSubmitting] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+
+  // Ref untuk debounce search
+  const searchDebounceRef = useRef(null);
+
+  // Ref untuk menyimpan event ID terkini (mengatasi stale closure di Socket)
+  const currentEventIdRef = useRef(null);
 
   // Fetch active event context (booths, categories, products)
   const fetchActiveEventContext = async () => {
@@ -130,6 +146,11 @@ const ListTransaksi = () => {
     }
   }, [filters.q, filters.status, filters.payment_method, filters.category_id, activeEventContext?.event?.id, selectedOwnerEventId, user?.role]);
 
+  // Selalu simpan eventId terkini ke ref agar Socket handler tidak stale
+  useEffect(() => {
+    currentEventIdRef.current = user?.role === 'OWNER' ? selectedOwnerEventId : (activeEventContext?.event?.id || null);
+  }, [selectedOwnerEventId, activeEventContext?.event?.id, user?.role]);
+
   // Fetch categories when event changes
   useEffect(() => {
     const fetchCategoriesForEvent = async (eventId) => {
@@ -166,13 +187,11 @@ const ListTransaksi = () => {
     fetchActiveEventContext();
 
     // Listen to Socket.IO events for reactive updates
+    // Menggunakan ref untuk menghindari stale closure (event ID selalu fresh)
     const socket = getSocket();
     const handleUpdate = () => {
-      if (user?.role === 'OWNER') {
-        if (selectedOwnerEventId) loadAllData(selectedOwnerEventId);
-      } else {
-        if (activeEventContext?.event?.id) loadAllData(activeEventContext.event.id);
-      }
+      const eventId = currentEventIdRef.current;
+      if (eventId) loadAllData(eventId);
     };
 
     socket.on('queue_updated', handleUpdate);
@@ -190,49 +209,62 @@ const ListTransaksi = () => {
 
   // Queue Control functions
   const handleCallNext = async () => {
+    if (isCallingNext) return;
     try {
+      setIsCallingNext(true);
       const res = await apiClient.post('/queue/call-next');
       if (res.data.transaction) {
         // Emit visual cues or alert
       } else {
         alert(res.data.message || 'Antrean kosong');
       }
-      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
-        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
-      }
+      const eventId = currentEventIdRef.current;
+      if (eventId) loadAllData(eventId);
     } catch (err) {
       alert(err.response?.data?.message || 'Gagal memanggil antrean berikutnya');
+    } finally {
+      setIsCallingNext(false);
     }
   };
 
   const handleRecall = async (id, code) => {
+    if (recallingId) return;
     try {
+      setRecallingId(id);
       await apiClient.post(`/queue/${id}/recall`);
-      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
-        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
-      }
+      const eventId = currentEventIdRef.current;
+      if (eventId) loadAllData(eventId);
     } catch (err) {
       alert(err.response?.data?.message || 'Gagal memanggil ulang');
+    } finally {
+      setRecallingId(null);
     }
   };
 
   const handleSkip = async (id, code) => {
+    if (skippingId) return;
     try {
+      setSkippingId(id);
       await apiClient.post(`/queue/${id}/skip`);
-      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
-        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
-      }
+      const eventId = currentEventIdRef.current;
+      if (eventId) loadAllData(eventId);
     } catch (err) {
       alert(err.response?.data?.message || 'Gagal melewati antrean');
+    } finally {
+      setSkippingId(null);
     }
   };
 
   const handleTestVoice = async () => {
+    if (isTestingVoice) return;
     try {
+      setIsTestingVoice(true);
       await apiClient.post('/queue/test-voice');
       alert('Perintah tes suara dikirim ke TV');
     } catch (err) {
       alert('Gagal mengirim perintah tes suara');
+    } finally {
+      setIsTestingVoice(false);
     }
   };
 
@@ -284,29 +316,35 @@ const ListTransaksi = () => {
   // Cancel & Delete handlers
   const handleCancelTransaction = async (id, reason) => {
     if (!reason || reason.trim() === '') return alert('Alasan pembatalan wajib diisi');
+    if (isCancelSubmitting) return;
     try {
+      setIsCancelSubmitting(true);
       const res = await apiClient.post(`/transactions/${id}/cancel`, { cancel_reason: reason });
       alert(res.data.message || 'Transaksi berhasil dibatalkan.');
       setCancelModal({ isOpen: false, transaction: null, reason: '' });
-      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
-        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
-      }
+      const eventId = currentEventIdRef.current;
+      if (eventId) loadAllData(eventId);
     } catch (error) {
       alert(error.response?.data?.message || 'Gagal membatalkan transaksi');
+    } finally {
+      setIsCancelSubmitting(false);
     }
   };
 
   const handleDeleteTransaction = async (id, reason) => {
     if (!reason || reason.trim() === '') return alert('Alasan penghapusan wajib diisi');
+    if (isDeleteSubmitting) return;
     try {
+      setIsDeleteSubmitting(true);
       const res = await apiClient.delete(`/transactions/${id}`, { data: { delete_reason: reason } });
       alert(res.data.message || 'Pendaftaran berhasil dihapus.');
       setDeleteModal({ isOpen: false, transaction: null, reason: '' });
-      if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
-        loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
-      }
+      const eventId = currentEventIdRef.current;
+      if (eventId) loadAllData(eventId);
     } catch (error) {
       alert(error.response?.data?.message || 'Gagal menghapus pendaftaran');
+    } finally {
+      setIsDeleteSubmitting(false);
     }
   };
 
@@ -342,16 +380,19 @@ const ListTransaksi = () => {
   };
 
   const handleExportPDF = async () => {
+    if (isExportingPDF) return;
     const currentEventId = user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id;
     if (!currentEventId) {
       return alert('Event aktif tidak ditemukan. Tidak dapat melakukan export.');
     }
     try {
+      setIsExportingPDF(true);
       const queryParams = new URLSearchParams({ ...filters, event_id: currentEventId }).toString();
       const url = `/transactions/export/pdf?${queryParams}`;
 
       const response = await apiClient.get(url, {
-        responseType: 'blob'
+        responseType: 'blob',
+        timeout: 60000, // 60 detik untuk export PDF
       });
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -363,6 +404,8 @@ const ListTransaksi = () => {
     } catch (error) {
       console.error('Failed to export PDF', error);
       alert('Gagal mengexport PDF. Pastikan data transaksi tersedia.');
+    } finally {
+      setIsExportingPDF(false);
     }
   };
 
@@ -402,9 +445,10 @@ const ListTransaksi = () => {
           </Link>
           <button
             onClick={handleTestVoice}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-bold hover:bg-slate-50 transition-colors shadow-sm text-sm"
+            disabled={isTestingVoice}
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-bold hover:bg-slate-50 transition-colors shadow-sm text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Volume2 size={16} className="text-indigo-500" /> Tes Suara TV
+            <Volume2 size={16} className="text-indigo-500" /> {isTestingVoice ? 'Mengirim...' : 'Tes Suara TV'}
           </button>
           <div className="flex items-center gap-2 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
             <select
@@ -417,9 +461,10 @@ const ListTransaksi = () => {
             </select>
             <button
               onClick={handleExportPDF}
-              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-slate-800 transition-colors text-sm"
+              disabled={isExportingPDF}
+              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-slate-800 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Download size={16} /> Export PDF
+              <Download size={16} /> {isExportingPDF ? 'Mengexport...' : 'Export PDF'}
             </button>
           </div>
         </div>
@@ -465,16 +510,18 @@ const ListTransaksi = () => {
                 <>
                   <button
                     onClick={() => handleRecall(activeCall.id, activeCall.payment_queue_code || activeCall.queue_code)}
-                    className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition-colors text-sm flex items-center gap-2"
+                    disabled={recallingId === activeCall.id}
+                    className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition-colors text-sm flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     title="Panggil Ulang Suara TV"
                   >
-                    <Volume2 size={16} /> Panggil Ulang
+                    <Volume2 size={16} /> {recallingId === activeCall.id ? 'Memanggil...' : 'Panggil Ulang'}
                   </button>
                   <button
                     onClick={() => handleSkip(activeCall.id, activeCall.payment_queue_code || activeCall.queue_code)}
-                    className="px-4 py-3 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-300 rounded-xl font-bold transition-colors text-sm flex items-center gap-2"
+                    disabled={skippingId === activeCall.id}
+                    className="px-4 py-3 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-300 rounded-xl font-bold transition-colors text-sm flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <X size={16} /> Lewati
+                    <X size={16} /> {skippingId === activeCall.id ? 'Melewati...' : 'Lewati'}
                   </button>
                   <button
                     onClick={() => openCheckoutModal(activeCall)}
@@ -487,10 +534,11 @@ const ListTransaksi = () => {
 
               <button
                 onClick={handleCallNext}
-                className="px-6 py-4 rounded-2xl font-bold bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/25 transition-all flex items-center gap-2 group border border-indigo-400"
+                disabled={isCallingNext}
+                className="px-6 py-4 rounded-2xl font-bold bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/25 transition-all flex items-center gap-2 group border border-indigo-400 disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                PANGGIL BERIKUTNYA
-                <ChevronRight size={24} className="group-hover:translate-x-1 transition-transform" />
+                {isCallingNext ? 'MEMANGGIL...' : 'PANGGIL BERIKUTNYA'}
+                {!isCallingNext && <ChevronRight size={24} className="group-hover:translate-x-1 transition-transform" />}
               </button>
             </div>
           </div>
@@ -506,7 +554,8 @@ const ListTransaksi = () => {
                   <button
                     key={item.id}
                     onClick={() => handleRecall(item.id, item.payment_queue_code || item.queue_code)}
-                    className="px-3 py-1.5 bg-red-950/40 hover:bg-indigo-900 hover:border-indigo-800 border border-red-900/40 rounded-xl text-red-400 hover:text-indigo-200 font-mono text-xs font-black transition-all flex items-center gap-1.5"
+                    disabled={recallingId === item.id}
+                    className="px-3 py-1.5 bg-red-950/40 hover:bg-indigo-900 hover:border-indigo-800 border border-red-900/40 rounded-xl text-red-400 hover:text-indigo-200 font-mono text-xs font-black transition-all flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Volume2 size={11} />
                     <span>{item.payment_queue_code || item.queue_code}</span>
@@ -552,8 +601,14 @@ const ListTransaksi = () => {
               <input
                 type="text"
                 className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 font-medium text-sm"
-                value={filters.q}
-                onChange={e => setFilters({ ...filters, q: e.target.value })}
+                defaultValue={filters.q}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                  searchDebounceRef.current = setTimeout(() => {
+                    setFilters(prev => ({ ...prev, q: val }));
+                  }, 400);
+                }}
                 placeholder="Ketik nama peserta, nomor antrean, atau kode pendaftaran..."
               />
             </div>
@@ -670,7 +725,8 @@ const ListTransaksi = () => {
 
                           <button
                             onClick={() => handleRecall(t.id, t.payment_queue_code || t.queue_code)}
-                            className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl transition-all"
+                            disabled={recallingId === t.id}
+                            className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                             title="Panggil Antrean"
                           >
                             <Volume2 size={15} />
@@ -678,7 +734,8 @@ const ListTransaksi = () => {
 
                           <button
                             onClick={() => handleSkip(t.id, t.payment_queue_code || t.queue_code)}
-                            className="p-2 bg-red-50/10 hover:bg-red-50 text-red-650 rounded-xl transition-all"
+                            disabled={skippingId === t.id}
+                            className="p-2 bg-red-50/10 hover:bg-red-50 text-red-650 rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                             title="Lewati Antrean"
                           >
                             <X size={15} />
@@ -1216,16 +1273,20 @@ const ListTransaksi = () => {
               <button
                 type="button"
                 onClick={() => setEditModal({ isOpen: false, transaction: null, participantName: '', phone: '', notes: '', categoryId: '', boothId: '', items: [] })}
-                className="px-6 py-3.5 bg-slate-100 text-slate-700 font-extrabold rounded-xl hover:bg-slate-200"
+                disabled={isEditSubmitting}
+                className="px-6 py-3.5 bg-slate-100 text-slate-700 font-extrabold rounded-xl hover:bg-slate-200 disabled:opacity-60"
               >
                 Batal
               </button>
               <button
                 type="button"
+                disabled={isEditSubmitting}
                 onClick={async () => {
                   if (!editModal.participantName) return alert('Nama wajib diisi');
                   if (editModal.items.length === 0) return alert('Pilih minimal 1 produk');
+                  if (isEditSubmitting) return;
                   try {
+                    setIsEditSubmitting(true);
                     await apiClient.put(`/transactions/${editModal.transaction.id}`, {
                       participant_name: editModal.participantName,
                       phone: editModal.phone,
@@ -1236,16 +1297,17 @@ const ListTransaksi = () => {
                     });
                     alert('Data transaksi berhasil diperbarui');
                     setEditModal({ isOpen: false, transaction: null, participantName: '', phone: '', notes: '', categoryId: '', boothId: '', items: [] });
-                    if (user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext?.event?.id) {
-                      loadAllData(user?.role === 'OWNER' ? selectedOwnerEventId : activeEventContext.event.id);
-                    }
+                    const eventId = currentEventIdRef.current;
+                    if (eventId) loadAllData(eventId);
                   } catch (err) {
                     alert(err.response?.data?.message || 'Gagal mengupdate transaksi');
+                  } finally {
+                    setIsEditSubmitting(false);
                   }
                 }}
-                className="px-8 py-3.5 bg-green-400 text-white font-extrabold rounded-xl hover:bg-emerald-700"
+                className="px-8 py-3.5 bg-green-400 text-white font-extrabold rounded-xl hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Simpan Perubahan
+                {isEditSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
               </button>
             </div>
           </div>
@@ -1274,16 +1336,17 @@ const ListTransaksi = () => {
             <div className="flex justify-end gap-3 border-t pt-4">
               <button
                 onClick={() => setDeleteModal({ isOpen: false, transaction: null, reason: '' })}
-                className="px-4 py-2 border rounded-xl hover:bg-slate-100 font-semibold"
+                disabled={isDeleteSubmitting}
+                className="px-4 py-2 border rounded-xl hover:bg-slate-100 font-semibold disabled:opacity-60"
               >
                 Batal
               </button>
               <button
                 onClick={() => handleDeleteTransaction(deleteModal.transaction.id, deleteModal.reason)}
-                disabled={!deleteModal.reason || deleteModal.reason.trim() === ''}
-                className="px-5 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold disabled:bg-slate-300"
+                disabled={!deleteModal.reason || deleteModal.reason.trim() === '' || isDeleteSubmitting}
+                className="px-5 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold disabled:bg-slate-300 disabled:cursor-not-allowed"
               >
-                Ya, Hapus Pendaftaran
+                {isDeleteSubmitting ? 'Menghapus...' : 'Ya, Hapus Pendaftaran'}
               </button>
             </div>
           </div>
@@ -1312,16 +1375,17 @@ const ListTransaksi = () => {
             <div className="flex justify-end gap-3 border-t pt-4">
               <button
                 onClick={() => setCancelModal({ isOpen: false, transaction: null, reason: '' })}
-                className="px-4 py-2 border rounded-xl hover:bg-slate-100 font-semibold"
+                disabled={isCancelSubmitting}
+                className="px-4 py-2 border rounded-xl hover:bg-slate-100 font-semibold disabled:opacity-60"
               >
                 Batal
               </button>
               <button
                 onClick={() => handleCancelTransaction(cancelModal.transaction.id, cancelModal.reason)}
-                disabled={!cancelModal.reason || cancelModal.reason.trim() === ''}
-                className="px-5 py-2 bg-red-650 hover:bg-red-700 disabled:bg-slate-300 text-white rounded-xl font-bold transition-colors"
+                disabled={!cancelModal.reason || cancelModal.reason.trim() === '' || isCancelSubmitting}
+                className="px-5 py-2 bg-red-650 hover:bg-red-700 disabled:bg-slate-300 text-white rounded-xl font-bold transition-colors disabled:cursor-not-allowed"
               >
-                Batalkan Transaksi
+                {isCancelSubmitting ? 'Membatalkan...' : 'Batalkan Transaksi'}
               </button>
             </div>
           </div>

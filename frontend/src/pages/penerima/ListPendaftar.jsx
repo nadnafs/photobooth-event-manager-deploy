@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../../services/apiClient';
 import env from '../../config/env';
 import { useAuth } from '../../context/AuthContext';
@@ -17,6 +17,13 @@ const ListPendaftar = () => {
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, transaction: null, reason: '' });
   const [linkModal, setLinkModal] = useState({ isOpen: false, transaction: null });
   const [activeEventContext, setActiveEventContext] = useState(null);
+
+  // Loading states
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [isDeleteSubmitting, setIsDeleteSubmitting] = useState(false);
+
+  // Ref untuk debounce search
+  const searchDebounceRef = useRef(null);
 
   const { user } = useAuth();
 
@@ -63,8 +70,8 @@ const ListPendaftar = () => {
 
     fetchTransactions(eventId);
 
-    // Auto-refresh fallback every 5 seconds
-    const interval = setInterval(() => fetchTransactions(eventId), 5000);
+    // Auto-refresh fallback setiap 30 detik (dikurangi dari 5 detik untuk hemat request)
+    const interval = setInterval(() => fetchTransactions(eventId), 30000);
 
     // Socket.io real-time update
     const socket = getSocket();
@@ -105,13 +112,17 @@ const ListPendaftar = () => {
 
   const handleDeleteTransaction = async (id, reason) => {
     if (!reason || reason.trim() === '') return alert('Alasan penghapusan wajib diisi');
+    if (isDeleteSubmitting) return;
     try {
+      setIsDeleteSubmitting(true);
       const res = await apiClient.delete(`/transactions/${id}`, { data: { delete_reason: reason } });
       alert('Pendaftaran berhasil dihapus');
       setDeleteModal({ isOpen: false, transaction: null, reason: '' });
       if (activeEventContext?.event?.id) fetchTransactions(activeEventContext.event.id);
     } catch (error) {
       alert(error.response?.data?.message || 'Gagal menghapus pendaftaran');
+    } finally {
+      setIsDeleteSubmitting(false);
     }
   };
 
@@ -155,8 +166,14 @@ const ListPendaftar = () => {
           <input
             type="text"
             className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary/50"
-            value={q}
-            onChange={e => setQ(e.target.value)}
+            defaultValue={q}
+            onChange={e => {
+              const val = e.target.value;
+              if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+              searchDebounceRef.current = setTimeout(() => {
+                setQ(val);
+              }, 400);
+            }}
             placeholder="Cari Nama / Kode..."
           />
         </div>
@@ -442,15 +459,19 @@ const ListPendaftar = () => {
             <div className="border-t pt-4 flex justify-end gap-3">
               <button
                 onClick={() => setEditModal({ isOpen: false, transaction: null, participantName: '', phone: '', notes: '', categoryId: '', boothId: '', items: [] })}
-                className="px-6 py-3.5 bg-slate-100 text-slate-700 font-extrabold rounded-xl hover:bg-slate-200 text-base"
+                disabled={isEditSubmitting}
+                className="px-6 py-3.5 bg-slate-100 text-slate-700 font-extrabold rounded-xl hover:bg-slate-200 text-base disabled:opacity-60"
               >
                 Batal
               </button>
               <button
+                disabled={isEditSubmitting}
                 onClick={async () => {
                   if (!editModal.participantName) return alert('Nama wajib diisi');
                   if (editModal.items.length === 0) return alert('Pilih minimal 1 produk');
+                  if (isEditSubmitting) return;
                   try {
+                    setIsEditSubmitting(true);
                     await apiClient.put(`/transactions/${editModal.transaction.id}`, {
                       participant_name: editModal.participantName,
                       phone: editModal.phone,
@@ -464,11 +485,13 @@ const ListPendaftar = () => {
                     if (activeEventContext?.event?.id) fetchTransactions(activeEventContext.event.id);
                   } catch (err) {
                     alert(err.response?.data?.message || 'Gagal mengupdate transaksi');
+                  } finally {
+                    setIsEditSubmitting(false);
                   }
                 }}
-                className="px-8 py-3.5 bg-green-400 text-white font-extrabold rounded-xl hover:bg-emerald-700 text-base"
+                className="px-8 py-3.5 bg-green-400 text-white font-extrabold rounded-xl hover:bg-emerald-700 text-base disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Simpan Perubahan
+                {isEditSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
               </button>
             </div>
           </div>
@@ -497,16 +520,17 @@ const ListPendaftar = () => {
             <div className="flex justify-end gap-3 border-t pt-4">
               <button
                 onClick={() => setDeleteModal({ isOpen: false, transaction: null, reason: '' })}
-                className="px-4 py-2 border rounded-xl hover:bg-slate-100 font-semibold"
+                disabled={isDeleteSubmitting}
+                className="px-4 py-2 border rounded-xl hover:bg-slate-100 font-semibold disabled:opacity-60"
               >
                 Batal
               </button>
               <button
                 onClick={() => handleDeleteTransaction(deleteModal.transaction.id, deleteModal.reason)}
-                disabled={!deleteModal.reason || deleteModal.reason.trim() === ''}
-                className="px-5 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold disabled:bg-slate-300"
+                disabled={!deleteModal.reason || deleteModal.reason.trim() === '' || isDeleteSubmitting}
+                className="px-5 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold disabled:bg-slate-300 disabled:cursor-not-allowed"
               >
-                Ya, Hapus Pendaftaran
+                {isDeleteSubmitting ? 'Menghapus...' : 'Ya, Hapus Pendaftaran'}
               </button>
             </div>
           </div>

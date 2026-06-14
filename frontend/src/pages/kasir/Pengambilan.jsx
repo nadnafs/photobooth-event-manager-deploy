@@ -6,6 +6,7 @@ import { Search, Package, Check, Clock, Share2 } from 'lucide-react';
 const Pengambilan = () => {
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
+  const [updatingId, setUpdatingId] = useState(null); // id transaksi yang sedang diupdate
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -24,15 +25,18 @@ const Pengambilan = () => {
   };
 
   const updateStatus = async (id, status) => {
+    if (updatingId) return;
     if(!window.confirm(`Ubah status pesanan menjadi ${status}?`)) return;
     try {
+      setUpdatingId(id);
       await apiClient.patch(`/orders/${id}/status`, { status });
-      alert('Berhasil diperbarui');
       if(q) {
         const res = await apiClient.get(`/transactions?q=${q}`);
         setResults(res.data.transactions.filter(t => t.payment_status === 'LUNAS'));
       } else fetchAll();
-    } catch(err) { alert('Gagal update status'); }
+    } catch(err) { alert('Gagal update status'); } finally {
+      setUpdatingId(null);
+    }
   };
 
   return (
@@ -100,10 +104,22 @@ const Pengambilan = () => {
                     </button>
                   )}
                   {(t.order_status === 'PROSES' || t.order_status === 'MENUNGGU_PROSES_CETAK') && (
-                    <button onClick={() => updateStatus(t.id, 'SIAP')} className="px-4 py-2 bg-warning/10 text-warning font-bold text-xs rounded-lg hover:bg-warning/20">Set Siap Diambil</button>
+                    <button
+                      onClick={() => updateStatus(t.id, 'SIAP')}
+                      disabled={updatingId === t.id}
+                      className="px-4 py-2 bg-warning/10 text-warning font-bold text-xs rounded-lg hover:bg-warning/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {updatingId === t.id ? 'Memproses...' : 'Set Siap Diambil'}
+                    </button>
                   )}
                   {t.order_status === 'SIAP' && (
-                    <button onClick={() => updateStatus(t.id, 'DIAMBIL')} className="px-4 py-2 bg-success text-white font-bold text-xs rounded-lg hover:bg-green-700 shadow-sm">Pesanan Diambil</button>
+                    <button
+                      onClick={() => updateStatus(t.id, 'DIAMBIL')}
+                      disabled={updatingId === t.id}
+                      className="px-4 py-2 bg-success text-white font-bold text-xs rounded-lg hover:bg-green-700 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {updatingId === t.id ? 'Memproses...' : 'Pesanan Diambil'}
+                    </button>
                   )}
                 </td>
               </tr>
