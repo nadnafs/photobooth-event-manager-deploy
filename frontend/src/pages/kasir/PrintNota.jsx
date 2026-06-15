@@ -120,11 +120,12 @@ const PrintNota = () => {
 
           @media print {
             html, body {
-              width: ${data.payment_status === "MENUNGGU_PEMBAYARAN" ? "8cm" : `${settings.width_cm}cm`};
-              height: ${data.payment_status === "MENUNGGU_PEMBAYARAN" ? "9.5cm" : `${settings.height_cm}cm`};
+              width: ${data.payment_status === "MENUNGGU_PEMBAYARAN" ? "8cm" : `${settings.width_cm}cm`} !important;
+              height: ${data.payment_status === "MENUNGGU_PEMBAYARAN" ? "9.5cm" : `${settings.height_cm}cm`} !important;
               margin: 0 !important;
               padding: 0 !important;
               background: white !important;
+              overflow: hidden !important;
             }
 
             body * {
@@ -137,7 +138,7 @@ const PrintNota = () => {
             }
 
             .nota-print {
-              position: absolute;
+              position: fixed;
               left: 0;
               top: 0;
               width: ${data.payment_status === "MENUNGGU_PEMBAYARAN" ? "8cm" : `${settings.width_cm}cm`} !important;
@@ -149,6 +150,17 @@ const PrintNota = () => {
           }
         `}
       </style>
+
+      {/* Print Instructions (hidden during print) */}
+      <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 print:hidden">
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs text-amber-800 font-medium">
+          <span className="font-bold text-amber-900">⚙️ Pengaturan wajib di dialog cetak browser:</span>
+          <span>📄 <b>Paper size</b> → <b>4x6</b> (102×152 mm)</span>
+          <span>⬜ <b>Margins</b> → <b>None</b> (bukan Default)</span>
+          <span>🔍 <b>Scale</b> → <b>100%</b> (bukan Default)</span>
+          <span>🔕 <b>Headers &amp; footers</b> → Matikan</span>
+        </div>
+      </div>
 
       {/* Control Buttons for Preview (hidden during print) */}
       <div className="bg-slate-100 p-4 border-b flex justify-center gap-4 print:hidden">
