@@ -166,7 +166,7 @@ const PrintNota = () => {
         </button>
       </div>
 
-      <div className="flex min-h-screen items-center justify-center bg-slate-200 p-4 print:block print:bg-white print:p-0">
+      <div className="flex min-h-screen items-center justify-center bg-slate-200 p-4 print:contents">
         <div
           className="nota-print bg-white text-black shadow-md"
           style={{
