@@ -28,6 +28,7 @@ const InfoPenerima = lazy(() => import('../pages/penerima/InfoPenerima'));
 const OwnerDashboard = lazy(() => import('../pages/owner/Dashboard'));
 const Users = lazy(() => import('../pages/owner/Users'));
 const InfoOwner = lazy(() => import('../pages/owner/InfoOwner'));
+const LaporanProduk = lazy(() => import('../pages/owner/LaporanProduk'));
 
 const TvAntrian = lazy(() => import('../pages/public/TvAntrian'));
 const StatusPeserta = lazy(() => import('../pages/public/StatusPeserta'));
@@ -109,6 +110,7 @@ export default function AppRoutes() {
           <Route path="events" element={<KelolaEvent />} />
           <Route path="events/:id" element={<DetailEvent />} />
           <Route path="transactions" element={<ListTransaksi />} />
+          <Route path="laporan-produk" element={<LaporanProduk />} />
           <Route path="info" element={<InfoOwner />} />
         </Route>
 

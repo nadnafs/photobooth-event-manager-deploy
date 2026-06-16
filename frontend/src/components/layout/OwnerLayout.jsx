@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LayoutDashboard, Calendar, Users, ShoppingBag, LogOut, BookOpen, Monitor } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, ShoppingBag, LogOut, BookOpen, Monitor, BarChart3 } from 'lucide-react';
 
 const OwnerLayout = () => {
   const { user, logout } = useAuth();
@@ -9,6 +9,7 @@ const OwnerLayout = () => {
   const navItems = [
     { name: 'Dashboard', path: '/owner/dashboard', icon: LayoutDashboard },
     { name: 'Transaksi', path: '/owner/transactions', icon: ShoppingBag },
+    { name: 'Laporan Produk', path: '/owner/laporan-produk', icon: BarChart3 },
     { name: 'Kelola Event', path: '/owner/events', icon: Calendar },
     { name: 'Kelola User', path: '/owner/users', icon: Users },
     { name: 'Panduan Owner', path: '/owner/info', icon: BookOpen },
